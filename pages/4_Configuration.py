@@ -61,8 +61,9 @@ st.markdown("---")
 
 periods = db.list_periods()
 
-t1, t2, t3, t4, t5 = st.tabs(
-    ["📅 Holidays", "🗂️ Cost Groups", "⏱️ Hour rules", "🎯 KPI Targets", "📆 Per-Month Overrides"]
+t1, t2, t3, t4, t5, t6 = st.tabs(
+    ["📅 Holidays", "🗂️ Cost Groups", "⏱️ Hour rules", "🎯 KPI Targets",
+     "📆 Per-Month Overrides", "🎨 Org Chart Style"]
 )
 
 
@@ -547,3 +548,126 @@ with t5:
                 "Source": source,
             })
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+# ============================================================================
+# 🎨 Org Chart Style tab — admin-customizable colors per dept/role/level
+# ============================================================================
+with t6:
+    if PERSONAL_MODE:
+        st.info(
+            "🎨 Org chart colors are a **shared / master** setting — they're the same "
+            "for everyone in the company. Switch to **Master mode** at the top of "
+            "the page to edit them (admin only)."
+        )
+    elif not is_admin():
+        st.warning("🔒 Only admins can change the org chart colors.")
+    else:
+        st.markdown("#### 🎨 Customize the Visual Org Chart")
+        st.caption(
+            "Pick colors used to render employee boxes in the **🌳 Org Chart → 🎨 Visual Chart** view. "
+            "The chart can be colored either **By department** (everyone in the same dept shares a color "
+            "= visual unity) or **By position role** (Managers all one color, Supervisors another, etc.). "
+            "End users pick which scheme they prefer in the chart's color-scheme dropdown."
+        )
+
+        emps_for_style = db.list_employees_with_extended()
+        unique_depts = sorted({(e.get("dept_by_location") or "").strip() for e in emps_for_style if e.get("dept_by_location")})
+        unique_roles = ["Mgr.", "Sup.", "Leader", "(staff)"]
+
+        sub1, sub2 = st.tabs(["🏢 By Department", "👔 By Position Role"])
+
+        # ------------- Color by Department --------------
+        with sub1:
+            st.markdown(f"##### Pick a color for each of the {len(unique_depts)} departments")
+            st.caption(
+                "Each department's box will use this color when the chart's color scheme "
+                "is set to **By department**. Tip: pick visually distinct hues so departments "
+                "are easy to tell apart at a glance."
+            )
+
+            saved_depts = db.get_org_chart_colors("dept")
+
+            # Default palette: a 12-color set. Cycle through for unset departments.
+            DEFAULT_PALETTE = [
+                "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899",
+                "#14B8A6", "#F97316", "#6366F1", "#84CC16", "#06B6D4", "#A855F7",
+            ]
+
+            with st.form("dept_colors_form"):
+                dept_inputs: dict[str, str] = {}
+                cols_per_row = 3
+                for i, d in enumerate(unique_depts):
+                    if i % cols_per_row == 0:
+                        cols = st.columns(cols_per_row)
+                    saved = saved_depts.get(d, {})
+                    default_color = saved.get("fill") or DEFAULT_PALETTE[i % len(DEFAULT_PALETTE)]
+                    with cols[i % cols_per_row]:
+                        c = st.color_picker(d or "(no department)", value=default_color, key=f"deptcol_{i}")
+                        dept_inputs[d] = c
+
+                col_save, col_reset = st.columns([1, 1])
+                save_btn = col_save.form_submit_button("💾 Save department colors", type="primary")
+                reset_btn = col_reset.form_submit_button("🔄 Reset all to defaults")
+
+            if save_btn:
+                for dept, color in dept_inputs.items():
+                    # Auto-pick text color: white if dark fill, black if light fill
+                    h = color.lstrip("#")
+                    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+                    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+                    font = "#FFFFFF" if luminance < 0.6 else "#1F2937"
+                    db.set_org_chart_color("dept", dept, fill_color=color, font_color=font, border_color=color)
+                st.success(f"✓ Saved colors for {len(dept_inputs)} departments.")
+                st.rerun()
+            if reset_btn:
+                for d in unique_depts:
+                    db.delete_org_chart_color("dept", d)
+                st.success("✓ All department colors reset to defaults.")
+                st.rerun()
+
+        # ------------- Color by Position Role --------------
+        with sub2:
+            st.markdown(f"##### Pick a color for each position role")
+            st.caption(
+                "These colors are used when the chart's color scheme is set to **By role**. "
+                "The default values match Anca's CI palette."
+            )
+
+            saved_roles = db.get_org_chart_colors("role")
+            ROLE_DEFAULTS = {
+                "Mgr.":     {"fill": "#715091", "font": "#FFFFFF", "border": "#4A2F62"},
+                "Sup.":     {"fill": "#009ADE", "font": "#FFFFFF", "border": "#0073A8"},
+                "Leader":   {"fill": "#E31D93", "font": "#FFFFFF", "border": "#A8126B"},
+                "(staff)":  {"fill": "#F3F4F6", "font": "#1F2937", "border": "#D1D5DB"},
+            }
+
+            with st.form("role_colors_form"):
+                role_inputs = {}
+                cols = st.columns(4)
+                for i, r in enumerate(unique_roles):
+                    saved = saved_roles.get(r, {})
+                    default_fill = saved.get("fill") or ROLE_DEFAULTS[r]["fill"]
+                    with cols[i]:
+                        st.markdown(f"**{r}**")
+                        fill = st.color_picker("Box color", value=default_fill, key=f"rolefill_{r}")
+                        role_inputs[r] = fill
+
+                col_save2, col_reset2 = st.columns([1, 1])
+                save2 = col_save2.form_submit_button("💾 Save role colors", type="primary")
+                reset2 = col_reset2.form_submit_button("🔄 Reset roles to CI defaults")
+
+            if save2:
+                for role, color in role_inputs.items():
+                    h = color.lstrip("#")
+                    r2, g2, b2 = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+                    lum = (0.299 * r2 + 0.587 * g2 + 0.114 * b2) / 255
+                    font = "#FFFFFF" if lum < 0.6 else "#1F2937"
+                    db.set_org_chart_color("role", role, fill_color=color, font_color=font, border_color=color)
+                st.success("✓ Saved role colors.")
+                st.rerun()
+            if reset2:
+                for r in unique_roles:
+                    db.delete_org_chart_color("role", r)
+                st.success("✓ Role colors reset to CI defaults.")
+                st.rerun()

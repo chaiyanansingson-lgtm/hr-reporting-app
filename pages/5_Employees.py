@@ -58,9 +58,133 @@ m4.metric("Direct", int((flt["d_in"] == "Direct").sum()))
 
 
 # ============================================================================
-# Change Request form (admin & manager only)
+# 📸 Employee photos — admin uploads photos shown on the Visual Org Chart
 # ============================================================================
 from lib.page_utils import is_manager_or_admin, is_admin
+
+if is_admin():
+    st.markdown("---")
+    st.markdown("### 📸 Employee photos")
+
+    photo_count = len(db.list_employee_photo_ids())
+    st.caption(
+        f"Photos appear on the **🌳 Org Chart → 🎨 Visual Chart** view. "
+        f"Currently **{photo_count} of {len(emps)} employees** have a photo on file."
+    )
+
+    with st.expander("📖 Photo guidelines & recommended size"):
+        from lib.photo_utils import get_photo_recommendations
+        st.markdown(get_photo_recommendations())
+
+    # Pick employee
+    photo_emps = sorted(emps, key=lambda x: (x.get("emp_name") or ""))
+    photo_picker_options = {
+        f"{e['emp_no']} · {e.get('emp_name', '?')}": e["emp_no"]
+        for e in photo_emps
+    }
+    pp1, pp2 = st.columns([2, 3])
+    sel_label = pp1.selectbox(
+        "Pick an employee",
+        list(photo_picker_options.keys()),
+        index=None,
+        placeholder="Search by employee number or name...",
+        key="photo_emp_picker",
+    )
+
+    if sel_label:
+        sel_emp_no = photo_picker_options[sel_label]
+        existing = db.get_employee_photo(sel_emp_no)
+
+        # Show current photo
+        with pp2:
+            if existing:
+                st.image(existing, caption=f"Current photo (#{sel_emp_no})", width=160)
+                if st.button("🗑️ Remove this photo", type="secondary", key="del_photo"):
+                    db.delete_employee_photo(sel_emp_no)
+                    st.success("Photo removed.")
+                    st.rerun()
+            else:
+                st.info("No photo on file yet for this employee.")
+
+        # Upload control
+        st.markdown("**Upload new photo**")
+        uploaded = st.file_uploader(
+            "Choose an image (JPG/PNG/WebP up to 5MB)",
+            type=["jpg", "jpeg", "png", "webp", "bmp", "gif"],
+            key="photo_uploader",
+        )
+        if uploaded is not None:
+            try:
+                from lib.photo_utils import validate_and_resize_photo
+                processed_bytes, info = validate_and_resize_photo(uploaded.read())
+                # Preview
+                colp1, colp2 = st.columns([1, 2])
+                colp1.image(processed_bytes, caption="Preview (after resize)", width=160)
+                colp2.success(info)
+                if colp2.button("✅ Save this photo", type="primary", key="save_photo"):
+                    db.set_employee_photo(sel_emp_no, processed_bytes)
+                    st.success(f"Photo saved for #{sel_emp_no}.")
+                    st.rerun()
+            except ValueError as ve:
+                st.error(f"❌ {ve}")
+            except Exception as ex:
+                st.error(f"❌ Could not process photo: {ex}")
+
+
+# ============================================================================
+# 🔗 Dotted-line reporting — admin sets additional dotted-line managers
+# ============================================================================
+if is_admin():
+    st.markdown("---")
+    st.markdown("### 🔗 Dotted-line reporting (optional)")
+    st.caption(
+        "By default, each employee has one **direct manager** (set in the Employee Master file, "
+        "shown as a solid line on the org chart). You can ALSO assign one or more **dotted-line "
+        "managers** here — they'll appear as dashed lines on the chart, indicating advisory or "
+        "matrix relationships."
+    )
+
+    dotted_emps = sorted(emps, key=lambda x: (x.get("emp_name") or ""))
+    dotted_options = {f"{e['emp_no']} · {e.get('emp_name', '?')}": e["emp_no"] for e in dotted_emps}
+    dl_emp_label = st.selectbox(
+        "Pick the employee whose dotted-line reporting you want to edit",
+        list(dotted_options.keys()),
+        index=None,
+        placeholder="Search by employee number or name...",
+        key="dotted_emp_picker",
+    )
+
+    if dl_emp_label:
+        dl_emp_no = dotted_options[dl_emp_label]
+        existing_dotted = db.get_dotted_managers(dl_emp_no)
+        emp_no_to_name = {e["emp_no"]: e.get("emp_name", "?") for e in emps}
+
+        # Multi-select for dotted-line managers
+        candidate_options = {f"{e['emp_no']} · {e.get('emp_name', '?')}": e["emp_no"]
+                             for e in dotted_emps if e["emp_no"] != dl_emp_no}
+        # Pre-select existing dotted managers
+        default_picks = [k for k, v in candidate_options.items() if v in existing_dotted]
+
+        picks = st.multiselect(
+            "Dotted-line managers (additional to the direct manager)",
+            list(candidate_options.keys()),
+            default=default_picks,
+            help="Pick one or more people. They'll appear as dashed lines on the org chart.",
+            key="dotted_picks",
+        )
+        if st.button("💾 Save dotted-line reports", type="primary", key="save_dotted"):
+            chosen_emp_nos = [candidate_options[p] for p in picks]
+            db.set_dotted_managers(dl_emp_no, chosen_emp_nos)
+            if chosen_emp_nos:
+                names = ", ".join(emp_no_to_name.get(n, n) for n in chosen_emp_nos)
+                st.success(f"✓ Saved {len(chosen_emp_nos)} dotted-line manager(s): {names}")
+            else:
+                st.success("✓ All dotted-line reports cleared.")
+
+
+# ============================================================================
+# Change Request form (admin & manager only)
+# ============================================================================
 
 if is_manager_or_admin():
     st.markdown("---")

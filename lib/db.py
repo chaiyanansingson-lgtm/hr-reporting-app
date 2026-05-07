@@ -226,6 +226,30 @@ CREATE INDEX IF NOT EXISTS idx_user_overrides ON user_overrides(username);
 def init_db():
     with cursor() as cur:
         cur.executescript(SCHEMA_SQL)
+
+        # ---- Schema migrations (additive only — never DROP existing columns)
+        # v11.3: photo_blob (BLOB) + dotted_managers (JSON list of emp_no strings)
+        existing_cols = {r["name"] for r in cur.execute(
+            "PRAGMA table_info(employees_extended)"
+        ).fetchall()}
+        if "photo_blob" not in existing_cols:
+            cur.execute("ALTER TABLE employees_extended ADD COLUMN photo_blob BLOB")
+        if "dotted_managers" not in existing_cols:
+            cur.execute("ALTER TABLE employees_extended ADD COLUMN dotted_managers TEXT")
+
+        # v11.3: org_chart_styling — admin-customizable colors per dept/role/level
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS org_chart_styling (
+                category TEXT NOT NULL,    -- 'dept' / 'role' / 'level'
+                key TEXT NOT NULL,         -- the dept name / role name / level number
+                fill_color TEXT,           -- hex color for box fill
+                font_color TEXT,           -- hex color for text
+                border_color TEXT,         -- hex color for box border
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (category, key)
+            )
+        """)
+
         # Seed default hour_config if empty
         cur.execute("SELECT COUNT(*) AS c FROM hour_config")
         if cur.fetchone()["c"] == 0:
@@ -849,3 +873,136 @@ def get_user_override_summary(username: str) -> list[dict]:
                            "detail": f"top_group={vals.get('sg_a_manu')}"})
 
     return diffs
+
+
+# ============================================================================
+# v11.3 — Org Chart enhancements: photos, dotted-line reports, custom colors
+# ============================================================================
+
+import json as _json
+
+
+def set_employee_photo(emp_no: str, photo_bytes: bytes) -> None:
+    """Store a processed photo blob for an employee.
+    Caller should have already validated/resized via lib.photo_utils."""
+    with cursor() as cur:
+        # Make sure the row exists in employees_extended
+        cur.execute(
+            "INSERT OR IGNORE INTO employees_extended(emp_no) VALUES (?)",
+            (str(emp_no),),
+        )
+        cur.execute(
+            "UPDATE employees_extended SET photo_blob = ?, updated_at = CURRENT_TIMESTAMP WHERE emp_no = ?",
+            (photo_bytes, str(emp_no)),
+        )
+
+
+def get_employee_photo(emp_no: str) -> bytes | None:
+    """Return raw photo bytes for an employee, or None if no photo set."""
+    with cursor() as cur:
+        cur.execute(
+            "SELECT photo_blob FROM employees_extended WHERE emp_no = ?",
+            (str(emp_no),),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return row["photo_blob"]
+
+
+def delete_employee_photo(emp_no: str) -> None:
+    """Remove the stored photo for an employee."""
+    with cursor() as cur:
+        cur.execute(
+            "UPDATE employees_extended SET photo_blob = NULL WHERE emp_no = ?",
+            (str(emp_no),),
+        )
+
+
+def list_employee_photo_ids() -> list[str]:
+    """Return list of emp_no values that have a photo on file (for stats / picker)."""
+    with cursor() as cur:
+        cur.execute(
+            "SELECT emp_no FROM employees_extended WHERE photo_blob IS NOT NULL"
+        )
+        return [r["emp_no"] for r in cur.fetchall()]
+
+
+def set_dotted_managers(emp_no: str, manager_emp_nos: list[str]) -> None:
+    """Store the list of dotted-line managers for an employee (in addition
+    to the primary manager_emp_no). Stored as JSON array of emp_no strings."""
+    with cursor() as cur:
+        cur.execute(
+            "INSERT OR IGNORE INTO employees_extended(emp_no) VALUES (?)",
+            (str(emp_no),),
+        )
+        cur.execute(
+            "UPDATE employees_extended SET dotted_managers = ? WHERE emp_no = ?",
+            (_json.dumps([str(m) for m in manager_emp_nos]), str(emp_no)),
+        )
+
+
+def get_dotted_managers(emp_no: str) -> list[str]:
+    """Return the list of dotted-line manager emp_no strings."""
+    with cursor() as cur:
+        cur.execute(
+            "SELECT dotted_managers FROM employees_extended WHERE emp_no = ?",
+            (str(emp_no),),
+        )
+        row = cur.fetchone()
+        if not row or not row["dotted_managers"]:
+            return []
+        try:
+            v = _json.loads(row["dotted_managers"])
+            return [str(x) for x in v] if isinstance(v, list) else []
+        except Exception:
+            return []
+
+
+def set_org_chart_color(category: str, key: str,
+                        fill_color: str = "",
+                        font_color: str = "",
+                        border_color: str = "") -> None:
+    """Save admin's color choice for a department / role / level.
+    `category` must be 'dept', 'role', or 'level'."""
+    if category not in ("dept", "role", "level"):
+        raise ValueError("category must be 'dept', 'role', or 'level'")
+    with cursor() as cur:
+        cur.execute(
+            """INSERT INTO org_chart_styling(category, key, fill_color, font_color, border_color, updated_at)
+               VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(category, key) DO UPDATE SET
+                   fill_color = excluded.fill_color,
+                   font_color = excluded.font_color,
+                   border_color = excluded.border_color,
+                   updated_at = CURRENT_TIMESTAMP""",
+            (category, str(key), fill_color, font_color, border_color),
+        )
+
+
+def get_org_chart_colors(category: str) -> dict[str, dict]:
+    """Return all saved colors for a category as {key: {fill, font, border}}."""
+    if category not in ("dept", "role", "level"):
+        return {}
+    with cursor() as cur:
+        cur.execute(
+            "SELECT key, fill_color, font_color, border_color FROM org_chart_styling WHERE category = ?",
+            (category,),
+        )
+        return {
+            r["key"]: {
+                "fill": r["fill_color"] or "",
+                "font": r["font_color"] or "",
+                "border": r["border_color"] or "",
+            }
+            for r in cur.fetchall()
+        }
+
+
+def delete_org_chart_color(category: str, key: str) -> None:
+    """Reset a department/role/level back to default (no custom color)."""
+    with cursor() as cur:
+        cur.execute(
+            "DELETE FROM org_chart_styling WHERE category = ? AND key = ?",
+            (category, str(key)),
+        )

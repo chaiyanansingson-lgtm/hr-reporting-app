@@ -126,22 +126,42 @@ with tab_tree:
             _render_tree_branch(r, depth=0, max_depth=max_depth)
 
 
-# ── Visual Chart view (graphviz - Visio-style box-and-line layout) ──
+# ── Visual Chart view (graphviz - Visio-style with photos, dept headers, color schemes) ──
 with tab_visual:
+    import os, tempfile, html as _html
     st.markdown("#### 🎨 Visual organizational chart")
     st.caption(
-        "Top-down hierarchy with boxes and connecting lines — like the Visio "
-        "format. Boxes are color-coded by role: 🟪 Manager, 🟦 Supervisor, "
-        "🟥 Leader, ⬜ regular staff. Use mouse wheel to zoom, drag to pan."
+        "Visio-style top-down hierarchy with employee photos, name (Surname + first letter), "
+        "position, level, and reporting lines (solid = direct, dashed = dotted-line). "
+        "Boxes are color-coded — switch the color scheme below to view by **role** or **department**. "
+        "Admin can customize the colors in **⚙️ Settings → 🎨 Org Chart Style**."
     )
 
-    # Filters
+    # ------ Helper: format short name "Nicholas D. (Nicky)"
+    def _format_short_name(emp_name: str, nickname: str) -> str:
+        # Strip prefix
+        nm = (emp_name or "").strip()
+        for px in ("Mr.", "Ms.", "Mrs.", "Miss "):
+            if nm.startswith(px):
+                nm = nm[len(px):].strip()
+                break
+        parts = nm.split()
+        if len(parts) >= 2:
+            first = " ".join(parts[:-1])  # everything except last word
+            last_initial = parts[-1][0].upper() + "."
+            short = f"{first} {last_initial}"
+        else:
+            short = nm
+        nick = (nickname or "").strip()
+        if nick:
+            short = f"{short} ({nick})"
+        return short
+
+    # ------ Filters
     fc1, fc2, fc3 = st.columns([2, 2, 2])
-    # Pick a root (top of branch to display)
     root_picker_options = {f"⭐ Whole company ({len(employees)} people)": None}
     for r in sorted(roots, key=lambda x: -(x.get("level") or 0)):
         root_picker_options[f"{r['emp_name']} — {r.get('title') or '?'}"] = r["emp_no"]
-    # Also add managers as possible starting points
     for e in sorted(employees, key=lambda x: x.get("emp_name") or ""):
         if e.get("is_mgr_role") in ("Mgr.", "Sup."):
             label = f"  ↳ {e['emp_name']} — {e.get('title') or '?'} ({e.get('is_mgr_role')})"
@@ -154,32 +174,37 @@ with tab_visual:
     )
     chart_root = root_picker_options[chart_root_label]
 
-    chart_max_depth = fc2.slider("Levels deep", 1, 10, 5,
-                                  help="How many levels of reports to show below the root")
-    show_titles = fc3.toggle("Show titles", value=True,
-                              help="Include job titles in each box (turn off for compact view)")
+    chart_max_depth = fc2.slider("Levels deep", 1, 10, 5)
 
-    # Build the set of employees to render (chart_root + descendants up to max depth)
-    def _collect_descendants(root_emp_no: str | None, max_d: int) -> set[str]:
-        if root_emp_no is None:
-            # Whole company — start from all roots
-            collected = set()
-            for r in roots:
-                _walk_down(r["emp_no"], 0, max_d, collected)
-            return collected
-        else:
-            collected = set()
-            _walk_down(root_emp_no, 0, max_d, collected)
-            return collected
+    color_scheme = fc3.selectbox(
+        "Color scheme",
+        ["By role (Mgr/Sup/Leader)", "By department"],
+        help="Pick how box colors are assigned. Admin defines the colors in Settings.",
+    )
 
-    def _walk_down(emp_no: str, depth: int, max_d: int, accumulator: set[str]):
+    # ------ Display options
+    co1, co2, co3 = st.columns(3)
+    show_photos = co1.toggle("Show photos", value=True,
+                              help="Embed employee photos in each box (uploaded by admin in Employees page)")
+    show_titles = co2.toggle("Show titles", value=True)
+    show_dept_headers = co3.toggle("Show department headers", value=True,
+                                    help="Wrap employees in same dept inside a labeled cluster (Visio-style)")
+
+    # ------ Compute visible set (root + descendants up to depth)
+    def _walk_down(emp_no: str, depth: int, max_d: int, accumulator: set):
         if depth > max_d or emp_no in accumulator:
             return
         accumulator.add(emp_no)
         for child in children_of.get(emp_no, []):
             _walk_down(child["emp_no"], depth + 1, max_d, accumulator)
 
-    visible = _collect_descendants(chart_root, chart_max_depth)
+    visible: set[str] = set()
+    if chart_root is None:
+        for r in roots:
+            _walk_down(r["emp_no"], 0, chart_max_depth, visible)
+    else:
+        _walk_down(chart_root, 0, chart_max_depth, visible)
+
     visible_emps = [e for e in employees if e["emp_no"] in visible]
 
     if not visible_emps:
@@ -187,69 +212,159 @@ with tab_visual:
     else:
         st.caption(f"Rendering **{len(visible_emps)}** employees, max **{chart_max_depth}** levels deep.")
 
-        # Color scheme: matches the Anca CI palette
-        ROLE_COLORS = {
-            "Mgr.":   {"fill": "#715091", "font": "white", "border": "#4A2F62"},
-            "Sup.":   {"fill": "#009ADE", "font": "white", "border": "#0073A8"},
-            "Leader": {"fill": "#E31D93", "font": "white", "border": "#A8126B"},
-            "":       {"fill": "#F3F4F6", "font": "#1F2937", "border": "#D1D5DB"},
+        # ------ Resolve color rules
+        ROLE_DEFAULTS = {
+            "Mgr.":     {"fill": "#715091", "font": "#FFFFFF", "border": "#4A2F62"},
+            "Sup.":     {"fill": "#009ADE", "font": "#FFFFFF", "border": "#0073A8"},
+            "Leader":   {"fill": "#E31D93", "font": "#FFFFFF", "border": "#A8126B"},
+            "(staff)":  {"fill": "#F3F4F6", "font": "#1F2937", "border": "#D1D5DB"},
         }
+        admin_role_colors = db.get_org_chart_colors("role")
+        admin_dept_colors = db.get_org_chart_colors("dept")
 
-        # Build DOT graph
+        DEFAULT_DEPT_PALETTE = [
+            "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899",
+            "#14B8A6", "#F97316", "#6366F1", "#84CC16", "#06B6D4", "#A855F7",
+        ]
+
+        def _color_for_emp(e: dict) -> dict:
+            """Return {fill, font, border} for an employee, based on the active scheme."""
+            if color_scheme.startswith("By role"):
+                role = e.get("is_mgr_role") or "(staff)"
+                if role in admin_role_colors and admin_role_colors[role].get("fill"):
+                    return admin_role_colors[role]
+                return ROLE_DEFAULTS.get(role, ROLE_DEFAULTS["(staff)"])
+            else:
+                # By department
+                dept = (e.get("dept_by_location") or "").strip() or "(no dept)"
+                if dept in admin_dept_colors and admin_dept_colors[dept].get("fill"):
+                    return admin_dept_colors[dept]
+                # Auto-assign from palette
+                idx = sum(ord(c) for c in dept) % len(DEFAULT_DEPT_PALETTE)
+                fill = DEFAULT_DEPT_PALETTE[idx]
+                # Compute readable text color
+                h = fill.lstrip("#")
+                lum = (0.299 * int(h[0:2], 16) + 0.587 * int(h[2:4], 16) + 0.114 * int(h[4:6], 16)) / 255
+                return {"fill": fill, "font": "#FFFFFF" if lum < 0.6 else "#1F2937", "border": fill}
+
+        # ------ Write photos to a temp directory (graphviz needs file paths)
+        photo_paths: dict[str, str] = {}
+        temp_dir = None
+        if show_photos:
+            temp_dir = tempfile.mkdtemp(prefix="orgphotos_")
+            for e in visible_emps:
+                blob = db.get_employee_photo(e["emp_no"])
+                if blob:
+                    p = os.path.join(temp_dir, f"emp_{e['emp_no']}.jpg")
+                    try:
+                        with open(p, "wb") as f:
+                            f.write(blob)
+                        photo_paths[e["emp_no"]] = p
+                    except Exception:
+                        pass
+
+        # ------ Build the DOT
         dot_lines = [
             'digraph OrgChart {',
-            '  rankdir=TB;',  # Top to Bottom
-            '  graph [splines=ortho, nodesep=0.35, ranksep=0.55, bgcolor="transparent"];',
-            '  node [shape=box, style="filled,rounded", fontname="Arial", fontsize=10, '
-                  'margin="0.18,0.10", penwidth=1.5];',
-            '  edge [color="#9CA3AF", arrowsize=0.6, penwidth=1.0];',
+            '  rankdir=TB;',
+            '  graph [splines=ortho, nodesep=0.35, ranksep=0.55, bgcolor="transparent", fontname="Arial"];',
+            '  node [shape=box, style="filled,rounded", fontname="Arial", margin="0.10,0.08", penwidth=1.5];',
+            '  edge [color="#6B7280", arrowsize=0.6, penwidth=1.2];',
+            '  compound=true;',
             '',
         ]
 
-        for e in visible_emps:
-            role = e.get("is_mgr_role") or ""
-            colors = ROLE_COLORS.get(role, ROLE_COLORS[""])
-            name = (e.get("emp_name") or "?").replace('"', "'")
-            # Strip Mr./Ms./Mrs. prefix for compactness
-            for px in ("Mr.", "Ms.", "Mrs.", "Miss "):
-                if name.startswith(px):
-                    name = name[len(px):].strip()
-                    break
-            nick = e.get("nickname") or ""
+        def _node_label(e: dict) -> str:
+            """Build an HTML-like graphviz label with photo + name + title + level."""
+            short_name = _format_short_name(e.get("emp_name") or "?", e.get("nickname") or "")
             title = e.get("title") or ""
+            level = e.get("level")
+            role = e.get("is_mgr_role") or ""
 
-            # Build label: Name (Nick)\nTitle\n[Role badge]
-            parts = [name]
-            if nick:
-                parts[0] += f" ({nick})"
+            # Use HTML label syntax (graphviz supports <TABLE>...</TABLE>)
+            rows = []
+            # Photo row (if available)
+            if show_photos and e["emp_no"] in photo_paths:
+                p = photo_paths[e["emp_no"]].replace("\\", "/")
+                rows.append(
+                    f'<TR><TD FIXEDSIZE="TRUE" WIDTH="62" HEIGHT="62" '
+                    f'CELLPADDING="0"><IMG SRC="{p}" SCALE="TRUE"/></TD></TR>'
+                )
+            # Name row
+            rows.append(
+                f'<TR><TD CELLPADDING="2"><FONT POINT-SIZE="10"><B>'
+                f'{_html.escape(short_name)}</B></FONT></TD></TR>'
+            )
+            # Title row
             if show_titles and title:
-                # Word-wrap long titles
-                if len(title) > 22:
-                    words = title.split()
-                    lines, cur = [], ""
-                    for w in words:
-                        if len(cur) + len(w) + 1 > 22:
-                            lines.append(cur.strip())
-                            cur = w + " "
-                        else:
-                            cur += w + " "
-                    if cur.strip():
-                        lines.append(cur.strip())
-                    title = "\\n".join(lines)
-                parts.append(title)
-            label = "\\n".join(parts).replace('"', "'")
+                rows.append(
+                    f'<TR><TD CELLPADDING="1"><FONT POINT-SIZE="9">'
+                    f'{_html.escape(title)}</FONT></TD></TR>'
+                )
+            # Level + role row (small subtle line)
+            badge_bits = []
+            if level is not None and level != "":
+                badge_bits.append(f"L{level}")
+            if role:
+                badge_bits.append(role)
+            if badge_bits:
+                rows.append(
+                    f'<TR><TD CELLPADDING="1"><FONT POINT-SIZE="8" COLOR="#666666">'
+                    f'{_html.escape(" · ".join(str(b) for b in badge_bits))}</FONT></TD></TR>'
+                )
+            html_label = f'<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">{"".join(rows)}</TABLE>>'
+            return html_label
 
-            dot_lines.append(
-                f'  "{e["emp_no"]}" [label="{label}", '
-                f'fillcolor="{colors["fill"]}", fontcolor="{colors["font"]}", '
-                f'color="{colors["border"]}"];'
+        def _emit_node(e: dict, indent: str = "  ") -> str:
+            colors = _color_for_emp(e)
+            return (
+                f'{indent}"{e["emp_no"]}" [label={_node_label(e)}, '
+                f'fillcolor="{colors["fill"]}", color="{colors["border"]}", '
+                f'fontcolor="{colors["font"]}"];'
             )
 
-        # Add edges (manager -> employee)
+        # Decide layout: clusters by department or flat
+        if show_dept_headers:
+            # Group visible employees by department
+            by_dept: dict[str, list[dict]] = {}
+            for e in visible_emps:
+                d = (e.get("dept_by_location") or "").strip() or "(no dept)"
+                by_dept.setdefault(d, []).append(e)
+
+            for i, (dept, members) in enumerate(sorted(by_dept.items())):
+                # Cluster header
+                dept_color = admin_dept_colors.get(dept, {}).get("fill", "#F3F4F6")
+                dept_font = admin_dept_colors.get(dept, {}).get("font", "#1F2937")
+                # Use a slightly darker variant for the cluster bg if main is light
+                dot_lines.append(f'  subgraph cluster_dept_{i} {{')
+                dot_lines.append(f'    label=<<B>{_html.escape(dept)}</B>>;')
+                dot_lines.append(f'    style="rounded,filled";')
+                dot_lines.append(f'    fillcolor="#FAFBFC";')
+                dot_lines.append(f'    color="{dept_color}";')
+                dot_lines.append(f'    fontcolor="{dept_font}";')
+                dot_lines.append(f'    fontsize=12;')
+                dot_lines.append(f'    margin=12;')
+                for emp in members:
+                    dot_lines.append(_emit_node(emp, indent="    "))
+                dot_lines.append('  }')
+        else:
+            for emp in visible_emps:
+                dot_lines.append(_emit_node(emp))
+
+        # ------ Edges: solid lines for direct manager, dashed for dotted-line
         for e in visible_emps:
             mgr = e.get("manager_emp_no")
             if mgr and mgr in visible:
                 dot_lines.append(f'  "{mgr}" -> "{e["emp_no"]}";')
+            # Dotted-line managers
+            dotted = db.get_dotted_managers(e["emp_no"])
+            for dm in dotted:
+                if dm and dm in visible:
+                    dot_lines.append(
+                        f'  "{dm}" -> "{e["emp_no"]}" '
+                        f'[style=dashed, color="#9CA3AF", arrowsize=0.5, '
+                        f'constraint=false, penwidth=1.0];'
+                    )
 
         dot_lines.append("}")
         dot_source = "\n".join(dot_lines)
@@ -258,19 +373,39 @@ with tab_visual:
             st.graphviz_chart(dot_source, use_container_width=True)
         except Exception as ex:
             st.error(
-                "Could not render the visual chart. Streamlit Cloud may not have "
-                "graphviz installed. The Tree and Table views above still work."
+                f"Could not render the visual chart: {ex}. "
+                "The Tree and Table views above still work."
             )
             with st.expander("Show DOT source (for debugging)"):
                 st.code(dot_source, language="dot")
 
-        # Download as DOT file (can be opened in Visio/Graphviz/draw.io)
+        # Legend
+        st.markdown("---")
+        leg1, leg2 = st.columns(2)
+        with leg1:
+            st.markdown("**Line types / ประเภทเส้นเชื่อม:**")
+            st.markdown("- **Solid line** ─── Direct report (รายงานตรง)")
+            st.markdown("- **Dashed line** ╌╌╌ Dotted-line / matrix report (รายงานสายประ)")
+        with leg2:
+            if color_scheme.startswith("By role"):
+                st.markdown("**Color by role / สีตามบทบาท:**")
+                for role in ["Mgr.", "Sup.", "Leader", "(staff)"]:
+                    c = admin_role_colors.get(role, {}).get("fill") or ROLE_DEFAULTS[role]["fill"]
+                    st.markdown(
+                        f"<span style='display:inline-block;width:14px;height:14px;"
+                        f"background:{c};border-radius:3px;margin-right:6px;vertical-align:middle'></span>"
+                        f"**{role}**", unsafe_allow_html=True,
+                    )
+            else:
+                st.markdown("**Color by department / สีตามแผนก:**")
+                st.caption("Each department has its own color — admin sets these in Settings.")
+
+        # Download as DOT file
         st.download_button(
             "⬇️ Download chart as DOT file",
             data=dot_source.encode("utf-8"),
             file_name=f"org_chart_{chart_root or 'all'}.dot",
             mime="text/vnd.graphviz",
-            help="Open in Graphviz, draw.io, or any DOT-compatible tool to print or edit.",
         )
 
 
