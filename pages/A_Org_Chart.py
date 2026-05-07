@@ -98,8 +98,9 @@ def _render_tree_branch(emp: dict, depth: int = 0, max_depth: int = 8):
 # View tabs
 # ---------------------------------------------------------------------------
 
-tab_tree, tab_table, tab_dept = st.tabs([
+tab_tree, tab_visual, tab_table, tab_dept = st.tabs([
     f"🌳 {t('org_view_tree')}",
+    f"🎨 Visual Chart",
     f"📋 {t('org_view_table')}",
     f"🏢 {t('org_view_dept')}",
 ])
@@ -123,6 +124,155 @@ with tab_tree:
 
         for r in starts:
             _render_tree_branch(r, depth=0, max_depth=max_depth)
+
+
+# ── Visual Chart view (graphviz - Visio-style box-and-line layout) ──
+with tab_visual:
+    st.markdown("#### 🎨 Visual organizational chart")
+    st.caption(
+        "Top-down hierarchy with boxes and connecting lines — like the Visio "
+        "format. Boxes are color-coded by role: 🟪 Manager, 🟦 Supervisor, "
+        "🟥 Leader, ⬜ regular staff. Use mouse wheel to zoom, drag to pan."
+    )
+
+    # Filters
+    fc1, fc2, fc3 = st.columns([2, 2, 2])
+    # Pick a root (top of branch to display)
+    root_picker_options = {f"⭐ Whole company ({len(employees)} people)": None}
+    for r in sorted(roots, key=lambda x: -(x.get("level") or 0)):
+        root_picker_options[f"{r['emp_name']} — {r.get('title') or '?'}"] = r["emp_no"]
+    # Also add managers as possible starting points
+    for e in sorted(employees, key=lambda x: x.get("emp_name") or ""):
+        if e.get("is_mgr_role") in ("Mgr.", "Sup."):
+            label = f"  ↳ {e['emp_name']} — {e.get('title') or '?'} ({e.get('is_mgr_role')})"
+            if e["emp_no"] not in [v for v in root_picker_options.values() if v]:
+                root_picker_options[label] = e["emp_no"]
+
+    chart_root_label = fc1.selectbox(
+        "Show branch starting from", list(root_picker_options.keys()),
+        help="Pick the company root or a specific manager to show only their team.",
+    )
+    chart_root = root_picker_options[chart_root_label]
+
+    chart_max_depth = fc2.slider("Levels deep", 1, 10, 5,
+                                  help="How many levels of reports to show below the root")
+    show_titles = fc3.toggle("Show titles", value=True,
+                              help="Include job titles in each box (turn off for compact view)")
+
+    # Build the set of employees to render (chart_root + descendants up to max depth)
+    def _collect_descendants(root_emp_no: str | None, max_d: int) -> set[str]:
+        if root_emp_no is None:
+            # Whole company — start from all roots
+            collected = set()
+            for r in roots:
+                _walk_down(r["emp_no"], 0, max_d, collected)
+            return collected
+        else:
+            collected = set()
+            _walk_down(root_emp_no, 0, max_d, collected)
+            return collected
+
+    def _walk_down(emp_no: str, depth: int, max_d: int, accumulator: set[str]):
+        if depth > max_d or emp_no in accumulator:
+            return
+        accumulator.add(emp_no)
+        for child in children_of.get(emp_no, []):
+            _walk_down(child["emp_no"], depth + 1, max_d, accumulator)
+
+    visible = _collect_descendants(chart_root, chart_max_depth)
+    visible_emps = [e for e in employees if e["emp_no"] in visible]
+
+    if not visible_emps:
+        st.warning("No employees to display with current filters.")
+    else:
+        st.caption(f"Rendering **{len(visible_emps)}** employees, max **{chart_max_depth}** levels deep.")
+
+        # Color scheme: matches the Anca CI palette
+        ROLE_COLORS = {
+            "Mgr.":   {"fill": "#715091", "font": "white", "border": "#4A2F62"},
+            "Sup.":   {"fill": "#009ADE", "font": "white", "border": "#0073A8"},
+            "Leader": {"fill": "#E31D93", "font": "white", "border": "#A8126B"},
+            "":       {"fill": "#F3F4F6", "font": "#1F2937", "border": "#D1D5DB"},
+        }
+
+        # Build DOT graph
+        dot_lines = [
+            'digraph OrgChart {',
+            '  rankdir=TB;',  # Top to Bottom
+            '  graph [splines=ortho, nodesep=0.35, ranksep=0.55, bgcolor="transparent"];',
+            '  node [shape=box, style="filled,rounded", fontname="Arial", fontsize=10, '
+                  'margin="0.18,0.10", penwidth=1.5];',
+            '  edge [color="#9CA3AF", arrowsize=0.6, penwidth=1.0];',
+            '',
+        ]
+
+        for e in visible_emps:
+            role = e.get("is_mgr_role") or ""
+            colors = ROLE_COLORS.get(role, ROLE_COLORS[""])
+            name = (e.get("emp_name") or "?").replace('"', "'")
+            # Strip Mr./Ms./Mrs. prefix for compactness
+            for px in ("Mr.", "Ms.", "Mrs.", "Miss "):
+                if name.startswith(px):
+                    name = name[len(px):].strip()
+                    break
+            nick = e.get("nickname") or ""
+            title = e.get("title") or ""
+
+            # Build label: Name (Nick)\nTitle\n[Role badge]
+            parts = [name]
+            if nick:
+                parts[0] += f" ({nick})"
+            if show_titles and title:
+                # Word-wrap long titles
+                if len(title) > 22:
+                    words = title.split()
+                    lines, cur = [], ""
+                    for w in words:
+                        if len(cur) + len(w) + 1 > 22:
+                            lines.append(cur.strip())
+                            cur = w + " "
+                        else:
+                            cur += w + " "
+                    if cur.strip():
+                        lines.append(cur.strip())
+                    title = "\\n".join(lines)
+                parts.append(title)
+            label = "\\n".join(parts).replace('"', "'")
+
+            dot_lines.append(
+                f'  "{e["emp_no"]}" [label="{label}", '
+                f'fillcolor="{colors["fill"]}", fontcolor="{colors["font"]}", '
+                f'color="{colors["border"]}"];'
+            )
+
+        # Add edges (manager -> employee)
+        for e in visible_emps:
+            mgr = e.get("manager_emp_no")
+            if mgr and mgr in visible:
+                dot_lines.append(f'  "{mgr}" -> "{e["emp_no"]}";')
+
+        dot_lines.append("}")
+        dot_source = "\n".join(dot_lines)
+
+        try:
+            st.graphviz_chart(dot_source, use_container_width=True)
+        except Exception as ex:
+            st.error(
+                "Could not render the visual chart. Streamlit Cloud may not have "
+                "graphviz installed. The Tree and Table views above still work."
+            )
+            with st.expander("Show DOT source (for debugging)"):
+                st.code(dot_source, language="dot")
+
+        # Download as DOT file (can be opened in Visio/Graphviz/draw.io)
+        st.download_button(
+            "⬇️ Download chart as DOT file",
+            data=dot_source.encode("utf-8"),
+            file_name=f"org_chart_{chart_root or 'all'}.dot",
+            mime="text/vnd.graphviz",
+            help="Open in Graphviz, draw.io, or any DOT-compatible tool to print or edit.",
+        )
+
 
 # ── Table view ──
 with tab_table:
