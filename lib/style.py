@@ -113,12 +113,14 @@ button[kind="secondaryFormSubmit"] {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0,154,222,0.15);
 }
-/* Primary buttons - brand gradient */
+/* Primary buttons - brand gradient
+   AGGRESSIVE: target ALL form submit buttons regardless of "kind" attribute.
+   Streamlit Cloud sometimes ships builds where button[kind] isn't set, leaving
+   the button white-on-white. Targeting by data-testid only is reliable. */
+.stFormSubmitButton > button,
+[data-testid="stFormSubmitButton"] button,
 .stButton > button[kind="primary"],
 .stDownloadButton > button[kind="primary"],
-.stFormSubmitButton > button[kind="primary"],
-[data-testid="stFormSubmitButton"] button[kind="primary"],
-[data-testid="stFormSubmitButton"] button[kind="primaryFormSubmit"],
 button[kind="primary"],
 button[kind="primaryFormSubmit"] {
     /* Solid fallback color first (in case gradient fails to render),
@@ -130,20 +132,21 @@ button[kind="primaryFormSubmit"] {
     box-shadow: 0 2px 12px rgba(113,80,145,0.30);
     font-weight: 600 !important;
 }
-/* Force the inner text/label of primary buttons to be white,
-   overriding any inherited color from the login-wrapper */
+/* Force EVERY descendant element of form-submit buttons to be white,
+   overriding any inherited color from the surrounding container */
+.stFormSubmitButton > button *,
+[data-testid="stFormSubmitButton"] button *,
 .stButton > button[kind="primary"] *,
-.stFormSubmitButton > button[kind="primary"] *,
-[data-testid="stFormSubmitButton"] button[kind="primary"] *,
-[data-testid="stFormSubmitButton"] button[kind="primaryFormSubmit"] *,
 button[kind="primary"] *,
 button[kind="primaryFormSubmit"] * {
     color: #FFFFFF !important;
     -webkit-text-fill-color: #FFFFFF !important;
+    fill: #FFFFFF !important;
 }
+.stFormSubmitButton > button:hover,
+[data-testid="stFormSubmitButton"] button:hover,
 .stButton > button[kind="primary"]:hover,
 .stDownloadButton > button[kind="primary"]:hover,
-.stFormSubmitButton > button[kind="primary"]:hover,
 button[kind="primaryFormSubmit"]:hover {
     color: #FFFFFF !important;
     transform: translateY(-1px);
