@@ -1,0 +1,15 @@
+[server]
+headless = true
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+# Anca CI theme — white-major, brand purple primary
+[theme]
+base = "light"
+primaryColor = "#715091"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7F8FC"
+textColor = "#1F2937"
+font = "sans serif"

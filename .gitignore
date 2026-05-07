@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Database (do NOT commit production data)
+data/hr.db
+data/*.db
+data/*.sqlite
+
+# Auth (contains password hashes & cookie secret -- do NOT commit)
+config/auth.yaml
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
