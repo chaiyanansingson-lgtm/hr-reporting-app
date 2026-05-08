@@ -224,6 +224,14 @@ CREATE INDEX IF NOT EXISTS idx_user_overrides ON user_overrides(username);
 
 
 def init_db():
+    # ---- v11.4 RBAC migration runs FIRST, in its own connection ----
+    # Must run before the main `with cursor()` block so we don't hit a
+    # SQLite lock conflict (the main block holds a RESERVED lock during
+    # INSERTs into hour_config / targets, which would block CREATE TABLE
+    # on a second connection).
+    from .rbac_migration import apply_rbac_migration
+    apply_rbac_migration()
+
     with cursor() as cur:
         cur.executescript(SCHEMA_SQL)
 
@@ -289,15 +297,10 @@ def init_db():
                 target_defaults,
             )
 
-        # ---- v11.4 RBAC migration (additive, idempotent) ----
-        # Adds 7 tables: roles, modules, capabilities, role_capabilities,
-        # user_roles, user_capability_overrides, approval_priority.
-        # Seeds 7 roles, 8 modules, 18 capabilities, default matrix,
-        # and bootstrap user_roles for admin/viewer/trial accounts.
-        from .rbac_migration import apply_rbac_migration
-        from .rbac_seed import seed_rbac_defaults
-        apply_rbac_migration()
-        seed_rbac_defaults()
+    # ---- v11.4 RBAC seed data (runs AFTER main `with` block commits + closes) ----
+    # Outer connection is now closed, so seed_rbac_defaults can write freely.
+    from .rbac_seed import seed_rbac_defaults
+    seed_rbac_defaults()
 
 
 # ---------- helper accessors used across pages ----------

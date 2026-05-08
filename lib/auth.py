@@ -71,21 +71,31 @@ def _connect() -> sqlite3.Connection:
 # ============================================================================
 def get_user_role(username: str) -> Optional[str]:
     """Return role_key for username following the resolution order in the
-    module docstring. Returns None for unknown users (fails closed)."""
+    module docstring. Returns None for unknown users (fails closed).
+
+    Defensive: if the user_roles table is missing or the DB is locked,
+    silently falls through to the YAML lookup so the app never crashes
+    with a hard SQL error on the landing page.
+    """
     if not username:
         return None
 
     # 1. Explicit row in user_roles (highest priority)
-    conn = _connect()
     try:
-        cur = conn.execute(
-            "SELECT role_key FROM user_roles WHERE username = ?", (username,)
-        )
-        row = cur.fetchone()
-        if row and row["role_key"]:
-            return row["role_key"]
-    finally:
-        conn.close()
+        conn = _connect()
+        try:
+            cur = conn.execute(
+                "SELECT role_key FROM user_roles WHERE username = ?", (username,)
+            )
+            row = cur.fetchone()
+            if row and row["role_key"]:
+                return row["role_key"]
+        finally:
+            conn.close()
+    except sqlite3.OperationalError:
+        # Table might not exist yet (first deploy before migration runs),
+        # or DB temporarily locked — fall through to YAML.
+        pass
 
     # 2. Fall back to YAML legacy role via auth_config
     try:
@@ -106,31 +116,37 @@ def get_role_capabilities(role_key: str) -> set[str]:
     """All capability keys granted to this role by default."""
     if not role_key:
         return set()
-    conn = _connect()
     try:
-        cur = conn.execute(
-            "SELECT capability_key FROM role_capabilities WHERE role_key = ?",
-            (role_key,),
-        )
-        return {r["capability_key"] for r in cur.fetchall()}
-    finally:
-        conn.close()
+        conn = _connect()
+        try:
+            cur = conn.execute(
+                "SELECT capability_key FROM role_capabilities WHERE role_key = ?",
+                (role_key,),
+            )
+            return {r["capability_key"] for r in cur.fetchall()}
+        finally:
+            conn.close()
+    except sqlite3.OperationalError:
+        return set()
 
 
 def get_user_overrides(username: str) -> dict[str, str]:
     """Returns {capability_key: 'grant' | 'revoke'} for this user."""
     if not username:
         return {}
-    conn = _connect()
     try:
-        cur = conn.execute(
-            """SELECT capability_key, override_type
-               FROM user_capability_overrides WHERE username = ?""",
-            (username,),
-        )
-        return {r["capability_key"]: r["override_type"] for r in cur.fetchall()}
-    finally:
-        conn.close()
+        conn = _connect()
+        try:
+            cur = conn.execute(
+                """SELECT capability_key, override_type
+                   FROM user_capability_overrides WHERE username = ?""",
+                (username,),
+            )
+            return {r["capability_key"]: r["override_type"] for r in cur.fetchall()}
+        finally:
+            conn.close()
+    except sqlite3.OperationalError:
+        return {}
 
 
 def effective_capabilities(username: str) -> set[str]:
@@ -178,15 +194,19 @@ def is_internal_user(username: str) -> bool:
     role = get_user_role(username)
     if not role:
         return False
-    conn = _connect()
     try:
-        cur = conn.execute(
-            "SELECT is_external FROM roles WHERE role_key = ?", (role,)
-        )
-        row = cur.fetchone()
-        return bool(row and row["is_external"] == 0)
-    finally:
-        conn.close()
+        conn = _connect()
+        try:
+            cur = conn.execute(
+                "SELECT is_external FROM roles WHERE role_key = ?", (role,)
+            )
+            row = cur.fetchone()
+            return bool(row and row["is_external"] == 0)
+        finally:
+            conn.close()
+    except sqlite3.OperationalError:
+        # Roles table missing — assume internal (don't lock out logged-in users)
+        return role != "visitor"
 
 
 # ============================================================================
@@ -198,36 +218,39 @@ def accessible_modules(username: str) -> list[dict]:
     user_caps = effective_capabilities(username)
     is_internal = is_internal_user(username)
 
-    conn = _connect()
     try:
-        cur = conn.execute(
-            """SELECT module_key, module_name_en, module_name_th, icon_emoji,
-                      sort_order, is_active, is_external_allowed,
-                      access_capability_key, description_en, description_th
-               FROM modules
-               ORDER BY sort_order, module_key"""
-        )
-        out: list[dict] = []
-        for r in cur.fetchall():
-            mod = dict(r)
+        conn = _connect()
+        try:
+            cur = conn.execute(
+                """SELECT module_key, module_name_en, module_name_th, icon_emoji,
+                          sort_order, is_active, is_external_allowed,
+                          access_capability_key, description_en, description_th
+                   FROM modules
+                   ORDER BY sort_order, module_key"""
+            )
+            out: list[dict] = []
+            for r in cur.fetchall():
+                mod = dict(r)
 
-            # Audience filter: internal users don't see Visitor Portal,
-            # external (Visitor) users only see external-allowed modules.
-            if is_internal and mod["is_external_allowed"] == 1:
-                continue
-            if (not is_internal) and mod["is_external_allowed"] == 0:
-                continue
+                # Audience filter: internal users don't see Visitor Portal,
+                # external (Visitor) users only see external-allowed modules.
+                if is_internal and mod["is_external_allowed"] == 1:
+                    continue
+                if (not is_internal) and mod["is_external_allowed"] == 0:
+                    continue
 
-            if mod["is_active"] == 0:
-                mod["accessible"] = False  # locked / coming-soon
-            else:
-                cap = mod["access_capability_key"] or f"{mod['module_key']}.access"
-                mod["accessible"] = cap in user_caps
+                if mod["is_active"] == 0:
+                    mod["accessible"] = False  # locked / coming-soon
+                else:
+                    cap = mod["access_capability_key"] or f"{mod['module_key']}.access"
+                    mod["accessible"] = cap in user_caps
 
-            out.append(mod)
-        return out
-    finally:
-        conn.close()
+                out.append(mod)
+            return out
+        finally:
+            conn.close()
+    except sqlite3.OperationalError:
+        return []
 
 
 # ============================================================================
@@ -237,35 +260,41 @@ def get_role_display(role_key: Optional[str], lang: str = "th") -> str:
     """Return localized role display name. Falls back to the key itself."""
     if not role_key:
         return "—"
-    conn = _connect()
     try:
-        cur = conn.execute(
-            "SELECT role_name_en, role_name_th FROM roles WHERE role_key = ?",
-            (role_key,),
-        )
-        row = cur.fetchone()
-        if not row:
-            return role_key
-        return row["role_name_th"] if lang.lower().startswith("th") else row["role_name_en"]
-    finally:
-        conn.close()
+        conn = _connect()
+        try:
+            cur = conn.execute(
+                "SELECT role_name_en, role_name_th FROM roles WHERE role_key = ?",
+                (role_key,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return role_key
+            return row["role_name_th"] if lang.lower().startswith("th") else row["role_name_en"]
+        finally:
+            conn.close()
+    except sqlite3.OperationalError:
+        return role_key
 
 
 def get_module_display(module_key: str, lang: str = "th") -> str:
     if not module_key:
         return "—"
-    conn = _connect()
     try:
-        cur = conn.execute(
-            "SELECT module_name_en, module_name_th FROM modules WHERE module_key = ?",
-            (module_key,),
-        )
-        row = cur.fetchone()
-        if not row:
-            return module_key
-        return row["module_name_th"] if lang.lower().startswith("th") else row["module_name_en"]
-    finally:
-        conn.close()
+        conn = _connect()
+        try:
+            cur = conn.execute(
+                "SELECT module_name_en, module_name_th FROM modules WHERE module_key = ?",
+                (module_key,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return module_key
+            return row["module_name_th"] if lang.lower().startswith("th") else row["module_name_en"]
+        finally:
+            conn.close()
+    except sqlite3.OperationalError:
+        return module_key
 
 
 # ============================================================================
