@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from lib import db
+from lib import auth
+from lib.landing import render_module_hub
 from lib.style import inject_anca_style, brand_band
 from lib.i18n import t, init_language, language_toggle, role_label
 from config import auth_config
@@ -81,28 +83,38 @@ def render_company_badge_sidebar():
 
 
 # ──────────────────────────── sidebar navigation ────────────────────────────
+# v11.4: NAV_ITEMS now uses capability strings instead of role tuples.
+# Format: (path, i18n_key, icon, required_cap_or_None_or_list_of_caps)
 NAV_ITEMS = [
-    # (file path,                       i18n key,           emoji, allowed roles or None for all)
     ("app.py",                          "nav_home",         "🏠",  None),
-    ("pages/1_Report.py",               "nav_report",       "📊",  None),
-    ("pages/2_Charts.py",               "nav_charts",       "📈",  None),
-    ("pages/A_Org_Chart.py",            "nav_org_chart",    "🌳",  None),
-    ("pages/5_Employees.py",            "nav_employees",    "👥",  None),
-    ("pages/4_Configuration.py",        "nav_config",       "⚙️",  None),
-    ("pages/3_Upload.py",               "nav_upload",       "📤",  ("admin",)),
-    ("pages/7_Change_Requests.py",      "nav_change_req",   "🔄",  ("admin", "manager")),
-    ("pages/8_Signup_Review.py",        "nav_signup_review","📝",  ("admin",)),
-    ("pages/6_Users.py",                "nav_users",        "🔑",  ("admin",)),
-    ("pages/9_Login_Audit.py",          "nav_login_audit",  "🛡️",  ("admin",)),
+    ("pages/1_Report.py",               "nav_report",       "📊",  "report.access"),
+    ("pages/2_Charts.py",               "nav_charts",       "📈",  "report.view_charts"),
+    ("pages/A_Org_Chart.py",            "nav_org_chart",    "🌳",  "orgchart.view"),
+    ("pages/5_Employees.py",            "nav_employees",    "👥",  "orgchart.view"),
+    ("pages/4_Configuration.py",        "nav_config",       "⚙️",  "report.edit_config"),
+    ("pages/3_Upload.py",               "nav_upload",       "📤",  "report.upload"),
+    ("pages/7_Change_Requests.py",      "nav_change_req",   "🔄",  ["report.submit_changes", "report.approve_changes"]),
+    ("pages/8_Signup_Review.py",        "nav_signup_review","📝",  "system.manage_users"),
+    ("pages/6_Users.py",                "nav_users",        "🔑",  "system.manage_users"),
+    ("pages/9_Login_Audit.py",          "nav_login_audit",  "🛡️",  "system.view_audit"),
+    ("pages/B_Visitor_Portal.py",       "nav_visitor",      "🛡️",  "visitor.access"),
 ]
 
 
+def _nav_visible(username: str, required) -> bool:
+    if required is None:
+        return True
+    if isinstance(required, (list, tuple, set)):
+        return auth.has_any_capability(username, required)
+    return auth.has_capability(username, required)
+
+
 def render_sidebar_nav():
-    """Render bilingual nav links. Hides items the user's role can't access."""
-    role = st.session_state.get("role")
+    """Render bilingual nav links, filtered by user capabilities."""
+    username = st.session_state.get("username") or ""
     st.sidebar.markdown("##### " + ("เมนู" if st.session_state.get("lang") == "th" else "Menu"))
-    for path, key, icon, allowed in NAV_ITEMS:
-        if allowed and role not in allowed:
+    for path, key, icon, required in NAV_ITEMS:
+        if not _nav_visible(username, required):
             continue
         st.sidebar.page_link(path, label=f"{icon}  {t(key)}")
 
@@ -114,11 +126,14 @@ def render_sidebar_footer():
     language_toggle(container=st.sidebar)
 
     if st.session_state.get("authenticated"):
+        username = st.session_state.get("username") or ""
+        # Show new role_key label (resolved via user_roles table or YAML legacy mapping)
+        role_key = auth.get_user_role(username) or st.session_state.get("role")
         st.sidebar.markdown("---")
         st.sidebar.markdown(
             f"<div style='font-size:0.875rem; color:#6B7280; padding: 6px 4px;'>"
             f"👤 <b>{st.session_state.name}</b><br>"
-            f"<code style='font-size:0.75rem;'>{role_label(st.session_state.role)}</code>"
+            f"<code style='font-size:0.75rem;'>{role_label(role_key)}</code>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -275,27 +290,10 @@ def render_home():
     st.caption(t("home_intro"))
     st.markdown("")
 
-    # quick metrics
-    periods = db.get_period_summary()
-    cfg = db.get_hour_config()
-    employees = db.list_employees()
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric(t("active_employees"), len(employees))
-    c2.metric(t("periods_loaded"), len(periods))
-    c3.metric(t("hours_per_day"), f"{cfg.get('hours_per_day', 8.0):.1f}")
-    c4.metric(t("holidays_defined"), len(db.list_holidays()))
-
-    if periods:
-        st.markdown(f"### 📅 {t('loaded_periods')}")
-        import pandas as pd
-        pdf = pd.DataFrame(periods).rename(
-            columns={"period": "Period", "employees": t("active_employees"),
-                     "rows": "Rows", "last_date": "Last date"}
-        )
-        st.dataframe(pdf, use_container_width=True, hide_index=True)
-    else:
-        st.info(t("no_periods_msg"))
+    # v11.4: render the module hub (replaces the old quick-metrics + period table)
+    username = st.session_state.get("username") or ""
+    lang = st.session_state.get("lang", "th")
+    render_module_hub(username, lang)
 
 
 # ──────────────────────────── route ────────────────────────────

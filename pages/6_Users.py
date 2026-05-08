@@ -11,7 +11,7 @@ from config import auth_config
 from lib.page_utils import require_login, page_header
 
 st.set_page_config(page_title="Users", page_icon="🔑", layout="wide")
-require_login(admin_only=True)
+require_login(capability="system.manage_users")
 page_header(title_key="users_title", subtitle_key="users_subtitle")
 
 users = auth_config.list_users()

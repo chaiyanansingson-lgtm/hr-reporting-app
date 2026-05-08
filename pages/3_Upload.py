@@ -23,7 +23,7 @@ from lib.page_utils import require_login, page_header
 from lib.templates import TEMPLATES
 
 st.set_page_config(page_title="Upload Data", page_icon="📤", layout="wide")
-require_login(admin_only=True)
+require_login(capability="report.upload")
 page_header(title_key="upload_title", subtitle_key="upload_subtitle")
 
 st.info(

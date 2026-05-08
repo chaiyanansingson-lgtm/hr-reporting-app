@@ -289,6 +289,16 @@ def init_db():
                 target_defaults,
             )
 
+        # ---- v11.4 RBAC migration (additive, idempotent) ----
+        # Adds 7 tables: roles, modules, capabilities, role_capabilities,
+        # user_roles, user_capability_overrides, approval_priority.
+        # Seeds 7 roles, 8 modules, 18 capabilities, default matrix,
+        # and bootstrap user_roles for admin/viewer/trial accounts.
+        from .rbac_migration import apply_rbac_migration
+        from .rbac_seed import seed_rbac_defaults
+        apply_rbac_migration()
+        seed_rbac_defaults()
+
 
 # ---------- helper accessors used across pages ----------
 

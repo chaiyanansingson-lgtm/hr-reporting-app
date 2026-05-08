@@ -15,7 +15,7 @@ from lib import db
 from lib.page_utils import require_login, page_header, is_admin
 
 st.set_page_config(page_title="Change Requests", page_icon="🔄", layout="wide")
-require_login(manager_or_admin=True)
+require_login(any_capability=["report.submit_changes", "report.approve_changes"])
 page_header(title_key="creq_title", subtitle_key="creq_subtitle")
 
 FIELD_LABELS = {

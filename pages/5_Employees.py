@@ -11,7 +11,7 @@ from lib import db
 from lib.page_utils import require_login, page_header
 
 st.set_page_config(page_title="Employees", page_icon="👥", layout="wide")
-require_login()
+require_login(capability="orgchart.view")
 page_header(title_key="employees_title", subtitle_key="employees_subtitle")
 
 emps = db.list_employees(active_only=False)

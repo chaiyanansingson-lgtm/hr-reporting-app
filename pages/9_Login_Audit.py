@@ -15,7 +15,7 @@ from lib.page_utils import require_login, page_header
 from lib.i18n import t
 
 st.set_page_config(page_title="Login Audit", page_icon="🛡️", layout="wide")
-require_login(admin_only=True)
+require_login(capability="system.view_audit")
 page_header(title_key="audit_title", subtitle_key="audit_subtitle")
 
 # Filters

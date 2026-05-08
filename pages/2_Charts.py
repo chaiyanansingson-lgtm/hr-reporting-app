@@ -23,7 +23,7 @@ from lib import db, calculations as calc
 from lib.page_utils import require_login, page_header
 
 st.set_page_config(page_title="Charts", page_icon="📈", layout="wide")
-require_login()
+require_login(capability="report.view_charts")
 page_header(title_key="charts_title", subtitle_key="charts_subtitle")
 
 periods = db.list_periods()

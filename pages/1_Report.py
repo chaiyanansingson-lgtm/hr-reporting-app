@@ -15,7 +15,7 @@ from lib import db, calculations as calc, exports
 from lib.page_utils import require_login, page_header
 
 st.set_page_config(page_title="Report", page_icon="📊", layout="wide")
-require_login()
+require_login(capability="report.access")
 page_header(title_key="report_title", subtitle_key="report_subtitle")
 
 # ---------- filters ----------

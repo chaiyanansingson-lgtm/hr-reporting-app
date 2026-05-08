@@ -23,7 +23,7 @@ from lib import db, parsers
 from lib.page_utils import require_login, page_header, is_admin
 
 st.set_page_config(page_title="Settings", page_icon="⚙️", layout="wide")
-require_login()  # any logged-in user (admin or non-admin) can access
+require_login(capability="report.edit_config")  # any logged-in user (admin or non-admin) can access
 page_header(title_key="config_title", subtitle_key="config_subtitle")
 
 USERNAME = st.session_state.get("username", "")

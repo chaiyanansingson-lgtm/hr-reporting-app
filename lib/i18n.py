@@ -224,6 +224,37 @@ TR = {
                             "th": "ยังไม่มีข้อมูลผังองค์กร ผู้ดูแลสามารถนำเข้าข้อมูลพนักงานได้ที่หน้าอัปโหลดข้อมูล"},
     "direct_reports":      {"en": "Direct reports",                "th": "ผู้ใต้บังคับบัญชาโดยตรง"},
     "reports_to":          {"en": "Reports to",                    "th": "รายงานต่อ"},
+
+    # ──────────────── v11.4: New role labels ────────────────
+    "role_visitor":        {"en": "Visitor",                        "th": "ผู้เยี่ยมชม"},
+    "role_supervisor":     {"en": "Supervisor",                     "th": "หัวหน้างาน"},
+    "role_finance":        {"en": "Finance Manager",                "th": "ผู้จัดการฝ่ายการเงิน"},
+    "role_super_admin":    {"en": "Super Admin",                    "th": "ผู้ดูแลระบบสูงสุด"},
+
+    # ──────────────── v11.4: Module hub (landing page) ────────────────
+    "hub_your_modules":    {"en": "Your modules",                   "th": "โมดูลที่ใช้ได้"},
+    "hub_coming_soon":     {"en": "Coming soon",                    "th": "เปิดให้ใช้งานเร็ว ๆ นี้"},
+    "hub_locked":          {"en": "Locked",                         "th": "ล็อก"},
+    "hub_enter":           {"en": "Enter",                          "th": "เข้าใช้งาน"},
+    "hub_no_access":       {"en": "No modules available — please contact your administrator.",
+                            "th": "ไม่มีโมดูลที่เข้าถึงได้ — กรุณาติดต่อผู้ดูแลระบบ"},
+    "hub_requires":        {"en": "Requires:",                      "th": "ต้องมีสิทธิ์:"},
+    "hub_role":            {"en": "Role",                           "th": "บทบาท"},
+
+    # ──────────────── v11.4: Permission denied ────────────────
+    "perm_denied_title":   {"en": "Permission denied",              "th": "ไม่มีสิทธิ์เข้าถึงหน้านี้"},
+    "perm_denied_role":    {"en": "Your role does not have access to this page.",
+                            "th": "บทบาทของคุณไม่มีสิทธิ์ที่จำเป็น"},
+    "perm_back_home":      {"en": "Back to home",                   "th": "กลับสู่หน้าหลัก"},
+
+    # ──────────────── v11.4: Sidebar nav additions ────────────────
+    "nav_visitor":         {"en": "Visitor Portal",                 "th": "พอร์ทัลผู้เยี่ยมชม"},
+
+    # ──────────────── v11.4: Visitor Portal page ────────────────
+    "visitor_portal_title":    {"en": "Visitor Portal — Safety Standards",
+                                 "th": "พอร์ทัลผู้เยี่ยมชม — มาตรฐานความปลอดภัย"},
+    "visitor_portal_subtitle": {"en": "Welcome to the safety standards portal for external visitors. This page provides essential information before entering the work area.",
+                                 "th": "ยินดีต้อนรับสู่พอร์ทัลข้อมูลมาตรฐานความปลอดภัยสำหรับผู้เยี่ยมชมภายนอก หน้านี้ให้ข้อมูลที่จำเป็นก่อนเข้าพื้นที่ปฏิบัติงาน"},
 }
 
 
@@ -261,5 +292,16 @@ def language_toggle(container=None):
 
 
 def role_label(role: str) -> str:
-    """Localized role display name."""
-    return t({"admin": "role_admin", "manager": "role_manager", "viewer": "role_viewer"}.get(role, "role_viewer"))
+    """Localized role display name. Accepts both legacy roles
+    (admin/manager/viewer) and new role_keys (super_admin/finance/...)."""
+    mapping = {
+        # New role keys (v11.4)
+        "visitor":     "role_visitor",
+        "viewer":      "role_viewer",
+        "supervisor":  "role_supervisor",
+        "manager":     "role_manager",
+        "finance":     "role_finance",
+        "admin":       "role_admin",
+        "super_admin": "role_super_admin",
+    }
+    return t(mapping.get(role, "role_viewer"))

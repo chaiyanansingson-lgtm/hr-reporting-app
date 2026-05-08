@@ -22,7 +22,7 @@ from lib.page_utils import require_login, page_header
 from lib.i18n import t
 
 st.set_page_config(page_title="Org Chart", page_icon="🌳", layout="wide")
-require_login()
+require_login(capability="orgchart.view")
 page_header(title_key="org_chart_title", subtitle_key="org_chart_subtitle")
 
 # ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@ from lib.i18n import t
 from config import auth_config
 
 st.set_page_config(page_title="Sign-up Requests", page_icon="📝", layout="wide")
-require_login(admin_only=True)
+require_login(capability="system.manage_users")
 page_header(title_key="signup_review_title", subtitle_key="signup_review_subtitle")
 
 
