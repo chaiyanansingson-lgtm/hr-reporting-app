@@ -129,7 +129,46 @@ with tab_tree:
 # ── Visual Chart view (graphviz - Visio-style with photos, dept headers, color schemes) ──
 with tab_visual:
     import os, tempfile, html as _html
+    import subprocess, base64, mimetypes, re as _re
     st.markdown("#### 🎨 Visual organizational chart")
+
+    # ── Render helper: inline photos as data: URIs so the browser can display them ──
+    # The default `st.graphviz_chart` leaves <image xlink:href="/tmp/..."/> references
+    # pointing at server-side file paths, which the browser cannot load. We call the
+    # `dot` binary ourselves, then post-process the SVG to replace each absolute file
+    # path with a base64-encoded data URI of the file's bytes.
+    def _render_dot_with_inline_photos(dot_source: str) -> str:
+        proc = subprocess.run(
+            ["dot", "-Tsvg"],
+            input=dot_source.encode("utf-8"),
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+        svg = proc.stdout.decode("utf-8", errors="replace")
+
+        def _inline(match):
+            attr_quote = match.group(1)
+            href = match.group(2)
+            if href.startswith(("http://", "https://", "data:")):
+                return match.group(0)
+            if not os.path.isabs(href) or not os.path.exists(href):
+                return match.group(0)
+            try:
+                with open(href, "rb") as f:
+                    data = f.read()
+                mime = mimetypes.guess_type(href)[0] or "image/jpeg"
+                b64 = base64.b64encode(data).decode("ascii")
+                return f'xlink:href={attr_quote}data:{mime};base64,{b64}{attr_quote}'
+            except Exception:
+                return match.group(0)
+
+        svg = _re.sub(r'xlink:href=(["\'])([^"\']+)\1', _inline, svg)
+        # Strip explicit width/height so CSS can make the SVG responsive
+        svg = _re.sub(r'<svg([^>]*?)\swidth="[^"]+"', r'<svg\1', svg, count=1)
+        svg = _re.sub(r'<svg([^>]*?)\sheight="[^"]+"', r'<svg\1', svg, count=1)
+        return svg
+
     st.caption(
         "Visio-style top-down hierarchy with employee photos, name (Surname + first letter), "
         "position, level, and reporting lines (solid = direct, dashed = dotted-line). "
@@ -370,6 +409,30 @@ with tab_visual:
         dot_source = "\n".join(dot_lines)
 
         try:
+            svg = _render_dot_with_inline_photos(dot_source)
+            # Wrap in a responsive container so wide charts can scroll horizontally
+            st.markdown(
+                f'<div style="overflow-x:auto; width:100%;">{svg}</div>',
+                unsafe_allow_html=True,
+            )
+        except subprocess.TimeoutExpired:
+            st.error("⏱️ The chart took too long to render. Try narrowing the branch or reducing depth.")
+            with st.expander("Show DOT source (for debugging)"):
+                st.code(dot_source, language="dot")
+        except subprocess.CalledProcessError as ex:
+            st.error(
+                f"Could not render the visual chart: dot returned {ex.returncode}. "
+                "The Tree and Table views above still work."
+            )
+            with st.expander("Show DOT source (for debugging)"):
+                st.code(dot_source, language="dot")
+            if ex.stderr:
+                with st.expander("Show dot stderr"):
+                    st.code(ex.stderr.decode("utf-8", errors="replace"))
+        except FileNotFoundError:
+            # graphviz binary missing — fall back to Streamlit's built-in renderer
+            # (loses photos but keeps the chart)
+            st.warning("⚠️ Graphviz binary not found on this server. Falling back to the default renderer — photos may not display.")
             st.graphviz_chart(dot_source, use_container_width=True)
         except Exception as ex:
             st.error(
