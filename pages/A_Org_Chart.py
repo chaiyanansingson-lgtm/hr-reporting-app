@@ -222,12 +222,20 @@ with tab_visual:
     )
 
     # ------ Display options
-    co1, co2, co3 = st.columns(3)
+    co1, co2, co3, co4 = st.columns(4)
     show_photos = co1.toggle("Show photos", value=True,
                               help="Embed employee photos in each box (uploaded by admin in Employees page)")
     show_titles = co2.toggle("Show titles", value=True)
     show_dept_headers = co3.toggle("Show department headers", value=True,
                                     help="Wrap employees in same dept inside a labeled cluster (Visio-style)")
+    layout_direction = co4.selectbox(
+        "Layout",
+        ["Top-down (wide)", "Left-right (tall)"],
+        index=0,
+        help=("Top-down spreads horizontally — good for small teams.\n"
+              "Left-right stacks vertically — good for big trees, scroll down to navigate."),
+    )
+    rankdir = "TB" if layout_direction.startswith("Top") else "LR"
 
     # ------ Compute visible set (root + descendants up to depth)
     def _walk_down(emp_no: str, depth: int, max_d: int, accumulator: set):
@@ -305,7 +313,7 @@ with tab_visual:
         # ------ Build the DOT
         dot_lines = [
             'digraph OrgChart {',
-            '  rankdir=TB;',
+            f'  rankdir={rankdir};',
             '  graph [splines=ortho, nodesep=0.35, ranksep=0.55, bgcolor="transparent", fontname="Arial"];',
             '  node [shape=box, style="filled,rounded", fontname="Arial", margin="0.10,0.08", penwidth=1.5];',
             '  edge [color="#6B7280", arrowsize=0.6, penwidth=1.2];',
@@ -408,6 +416,7 @@ with tab_visual:
         dot_lines.append("}")
         dot_source = "\n".join(dot_lines)
 
+        svg = None
         try:
             svg = _render_dot_with_inline_photos(dot_source)
             # Wrap in a responsive container so wide charts can scroll horizontally
@@ -463,13 +472,50 @@ with tab_visual:
                 st.markdown("**Color by department / สีตามแผนก:**")
                 st.caption("Each department has its own color — admin sets these in Settings.")
 
-        # Download as DOT file
-        st.download_button(
-            "⬇️ Download chart as DOT file",
-            data=dot_source.encode("utf-8"),
-            file_name=f"org_chart_{chart_root or 'all'}.dot",
-            mime="text/vnd.graphviz",
-        )
+        # ── Action buttons: full-screen view + PNG download (only if SVG rendered)
+        if svg:
+            @st.dialog("📐 Full-screen organizational chart", width="large")
+            def _show_fullscreen_chart(svg_data: str):
+                """Render the chart in a wide modal with scrollable overflow."""
+                st.markdown(
+                    f'<div style="overflow:auto; width:100%; max-height:78vh;">{svg_data}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.caption("💡 Scroll horizontally and vertically inside the dialog to navigate large charts. "
+                            "Close with the X in the top-right.")
+
+            ab1, ab2, ab3 = st.columns([1, 1, 2])
+            if ab1.button("🔍 View full-screen", use_container_width=True,
+                          help="Open the chart in a wider modal for easier review"):
+                _show_fullscreen_chart(svg)
+
+            # Pre-render PNG so the download button has data ready on click.
+            # Uses the same DOT source — dot binary reads the photo temp files
+            # directly and embeds them in the PNG output natively.
+            try:
+                png_proc = subprocess.run(
+                    ["dot", "-Tpng", "-Gdpi=150"],
+                    input=dot_source.encode("utf-8"),
+                    capture_output=True, check=True, timeout=60,
+                )
+                ab2.download_button(
+                    "⬇️ Download as PNG",
+                    data=png_proc.stdout,
+                    file_name=f"org_chart_{chart_root or 'all'}.png",
+                    mime="image/png",
+                    help="High-resolution PNG (150 DPI) — paste into PowerPoint, Google Slides, or Word",
+                    use_container_width=True,
+                )
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+                # Fall back to DOT if PNG rendering fails for any reason
+                ab2.download_button(
+                    "⬇️ Download as DOT (fallback)",
+                    data=dot_source.encode("utf-8"),
+                    file_name=f"org_chart_{chart_root or 'all'}.dot",
+                    mime="text/vnd.graphviz",
+                    help="PNG rendering failed — falling back to DOT source",
+                    use_container_width=True,
+                )
 
 
 # ── Table view ──
