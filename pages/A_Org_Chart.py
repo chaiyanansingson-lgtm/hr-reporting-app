@@ -343,7 +343,11 @@ with tab_visual:
 
         # ------ Build the DOT
         if visio_style:
-            node_defaults = '  node [shape=plain, fontname="Arial"];'
+            # Outer node carries the rounded shape + role-color fill.
+            # penwidth=0 hides the node's stroke so we don't get a thin halo.
+            # Small margins keep the table snug against the rounded edge.
+            node_defaults = ('  node [shape=box, style="rounded,filled", fontname="Arial", '
+                              'margin="0.04,0.02", penwidth=0];')
         else:
             node_defaults = ('  node [shape=box, style="filled,rounded", fontname="Arial", '
                               'margin="0.10,0.08", penwidth=1.5];')
@@ -401,25 +405,33 @@ with tab_visual:
 
         def _visio_node_label(e: dict, fill: str) -> str:
             """Visio-style label: colored title band on top, avatar (photo or
-            initials) on left, name + nickname/level on right. Pure HTML
-            label so the whole node is rendered by the TABLE."""
+            initials) on left, name + nickname/level on right.
+
+            CRITICAL: this label has NO border, NO rounded style, NO BGCOLOR
+            on the TABLE itself. The OUTER NODE (shape=box, style=rounded,filled,
+            fillcolor=role_color) provides the rounded shape and the colored
+            top half. The white name cell explicitly covers the bottom-right
+            portion with BGCOLOR="#FFFFFF". This avoids the "halo" gap that
+            STYLE=ROUNDED on a TABLE creates between square cells and rounded
+            corners.
+            """
             short_name = _format_short_name(e.get("emp_name") or "?", e.get("nickname") or "")
-            title_text = (e.get("title") or e.get("is_mgr_role") or "Staff")[:38]
+            title_text = (e.get("title") or e.get("is_mgr_role") or "Staff")[:42]
             nickname = e.get("nickname") or ""
             level = e.get("level")
 
-            # Avatar cell: photo if available, else initials on colored background
+            # Avatar cell: photo if available, else initials. NO BGCOLOR —
+            # inherits role color from the outer node fill.
             if show_photos and e["emp_no"] in photo_paths:
                 p = photo_paths[e["emp_no"]].replace("\\", "/")
                 avatar_cell = (
-                    f'<TD FIXEDSIZE="TRUE" WIDTH="44" HEIGHT="44" CELLPADDING="0" '
-                    f'BGCOLOR="{fill}"><IMG SRC="{p}" SCALE="TRUE"/></TD>'
+                    f'<TD FIXEDSIZE="TRUE" WIDTH="46" HEIGHT="46" CELLPADDING="0">'
+                    f'<IMG SRC="{p}" SCALE="TRUE"/></TD>'
                 )
             else:
                 initials = _initials_from_name(e.get("emp_name") or "")
                 avatar_cell = (
-                    f'<TD FIXEDSIZE="TRUE" WIDTH="44" HEIGHT="44" BGCOLOR="{fill}" '
-                    f'ALIGN="CENTER" VALIGN="MIDDLE">'
+                    f'<TD FIXEDSIZE="TRUE" WIDTH="46" HEIGHT="46" ALIGN="CENTER" VALIGN="MIDDLE">'
                     f'<FONT COLOR="#FFFFFF" POINT-SIZE="11"><B>'
                     f'{_html.escape(initials)}</B></FONT></TD>'
                 )
@@ -438,17 +450,17 @@ with tab_visual:
             title_row = ''
             if show_titles:
                 title_row = (
-                    f'<TR><TD COLSPAN="2" BGCOLOR="{fill}" CELLPADDING="3" ALIGN="CENTER">'
+                    f'<TR><TD COLSPAN="2" CELLPADDING="5" ALIGN="CENTER">'
                     f'<FONT COLOR="#FFFFFF" POINT-SIZE="8"><B>'
                     f'{_html.escape(title_text)}</B></FONT></TD></TR>'
                 )
 
+            # Transparent TABLE — outer node provides rounded fill
             return (
-                f'<<TABLE BORDER="1" COLOR="{fill}" CELLBORDER="0" CELLSPACING="0" '
-                f'CELLPADDING="0" STYLE="ROUNDED" BGCOLOR="#FFFFFF">'
+                f'<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">'
                 f'{title_row}'
                 f'<TR>{avatar_cell}'
-                f'<TD ALIGN="LEFT" CELLPADDING="5">'
+                f'<TD BGCOLOR="#FFFFFF" ALIGN="LEFT" CELLPADDING="6">'
                 f'<FONT POINT-SIZE="9" COLOR="#1F2937"><B>'
                 f'{_html.escape(short_name)}</B></FONT>'
                 f'{sub_row}'
@@ -458,7 +470,12 @@ with tab_visual:
         def _emit_node(e: dict, indent: str = "  ") -> str:
             colors = _color_for_emp(e)
             if visio_style:
-                return f'{indent}"{e["emp_no"]}" [label={_visio_node_label(e, colors["fill"])}];'
+                # In Visio mode the outer NODE must carry the role color (rounded fill).
+                # Setting color=fill makes the node's border invisible (no halo line).
+                return (
+                    f'{indent}"{e["emp_no"]}" [label={_visio_node_label(e, colors["fill"])}, '
+                    f'fillcolor="{colors["fill"]}", color="{colors["fill"]}"];'
+                )
             return (
                 f'{indent}"{e["emp_no"]}" [label={_node_label(e)}, '
                 f'fillcolor="{colors["fill"]}", color="{colors["border"]}", '
