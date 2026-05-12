@@ -132,6 +132,35 @@ with tab_visual:
     import subprocess, base64, mimetypes, re as _re
     st.markdown("#### 🎨 Visual organizational chart")
 
+    # ── Helpers for Visio-style mode (colored title band + avatar + name) ──
+    def _initials_from_name(name: str) -> str:
+        """'Ronnachai T.' → 'RT'   'Nicholas Doyle' → 'ND'   'Anan' → 'AN'"""
+        if not name:
+            return "??"
+        parts = [p for p in name.replace(".", "").split() if p]
+        if len(parts) >= 2:
+            return (parts[0][:1] + parts[1][:1]).upper()
+        return (parts[0][:2] if parts else "??").upper()
+
+    def _find_team_clusters(visible_emps_local, children_of_local, visible_set):
+        """A 'team' = a parent whose visible direct children are ALL leaves
+        (no further visible descendants) AND number ≥ 2. Used to stack
+        leaf workers vertically under their direct supervisor."""
+        teams = {}  # parent_emp_no -> ordered list of child_emp_no
+        for parent in visible_emps_local:
+            pno = parent["emp_no"]
+            kids = [c for c in children_of_local.get(pno, []) if c["emp_no"] in visible_set]
+            if len(kids) < 2:
+                continue
+            all_leaves = all(
+                not any(gc["emp_no"] in visible_set
+                        for gc in children_of_local.get(k["emp_no"], []))
+                for k in kids
+            )
+            if all_leaves:
+                teams[pno] = [k["emp_no"] for k in kids]
+        return teams
+
     # ── Render helper: inline photos as data: URIs so the browser can display them ──
     # The default `st.graphviz_chart` leaves <image xlink:href="/tmp/..."/> references
     # pointing at server-side file paths, which the browser cannot load. We call the
@@ -230,12 +259,14 @@ with tab_visual:
                                     help="Wrap employees in same dept inside a labeled cluster (Visio-style)")
     layout_direction = co4.selectbox(
         "Layout",
-        ["Top-down (wide)", "Left-right (tall)"],
+        ["📋 Visio-style (team columns)", "Top-down (wide)", "Left-right (tall)"],
         index=0,
-        help=("Top-down spreads horizontally — good for small teams.\n"
-              "Left-right stacks vertically — good for big trees, scroll down to navigate."),
+        help=("Visio-style: colored title bars, avatars, and worker teams stacked vertically (recommended).\n"
+              "Top-down: classic tree, spreads horizontally — good for small teams.\n"
+              "Left-right: tree on its side — good for very deep hierarchies."),
     )
-    rankdir = "TB" if layout_direction.startswith("Top") else "LR"
+    visio_style = layout_direction.startswith("📋")
+    rankdir = "LR" if layout_direction.startswith("Left") else "TB"
 
     # ------ Compute visible set (root + descendants up to depth)
     def _walk_down(emp_no: str, depth: int, max_d: int, accumulator: set):
@@ -311,11 +342,17 @@ with tab_visual:
                         pass
 
         # ------ Build the DOT
+        if visio_style:
+            node_defaults = '  node [shape=plain, fontname="Arial"];'
+        else:
+            node_defaults = ('  node [shape=box, style="filled,rounded", fontname="Arial", '
+                              'margin="0.10,0.08", penwidth=1.5];')
+
         dot_lines = [
             'digraph OrgChart {',
             f'  rankdir={rankdir};',
-            '  graph [splines=ortho, nodesep=0.35, ranksep=0.55, bgcolor="transparent", fontname="Arial"];',
-            '  node [shape=box, style="filled,rounded", fontname="Arial", margin="0.10,0.08", penwidth=1.5];',
+            '  graph [splines=ortho, nodesep=0.30, ranksep=0.50, bgcolor="transparent", fontname="Arial"];',
+            node_defaults,
             '  edge [color="#6B7280", arrowsize=0.6, penwidth=1.2];',
             '  compound=true;',
             '',
@@ -362,16 +399,99 @@ with tab_visual:
             html_label = f'<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">{"".join(rows)}</TABLE>>'
             return html_label
 
+        def _visio_node_label(e: dict, fill: str) -> str:
+            """Visio-style label: colored title band on top, avatar (photo or
+            initials) on left, name + nickname/level on right. Pure HTML
+            label so the whole node is rendered by the TABLE."""
+            short_name = _format_short_name(e.get("emp_name") or "?", e.get("nickname") or "")
+            title_text = (e.get("title") or e.get("is_mgr_role") or "Staff")[:38]
+            nickname = e.get("nickname") or ""
+            level = e.get("level")
+
+            # Avatar cell: photo if available, else initials on colored background
+            if show_photos and e["emp_no"] in photo_paths:
+                p = photo_paths[e["emp_no"]].replace("\\", "/")
+                avatar_cell = (
+                    f'<TD FIXEDSIZE="TRUE" WIDTH="44" HEIGHT="44" CELLPADDING="0" '
+                    f'BGCOLOR="{fill}"><IMG SRC="{p}" SCALE="TRUE"/></TD>'
+                )
+            else:
+                initials = _initials_from_name(e.get("emp_name") or "")
+                avatar_cell = (
+                    f'<TD FIXEDSIZE="TRUE" WIDTH="44" HEIGHT="44" BGCOLOR="{fill}" '
+                    f'ALIGN="CENTER" VALIGN="MIDDLE">'
+                    f'<FONT COLOR="#FFFFFF" POINT-SIZE="11"><B>'
+                    f'{_html.escape(initials)}</B></FONT></TD>'
+                )
+
+            sub_bits = []
+            if nickname:
+                sub_bits.append(f"({_html.escape(nickname)})")
+            if level not in (None, ""):
+                sub_bits.append(f"L{level}")
+            sub_text = " · ".join(sub_bits)
+            sub_row = (
+                f'<BR ALIGN="LEFT"/><FONT POINT-SIZE="7" COLOR="#6B7280">{sub_text}</FONT>'
+                if sub_text else ''
+            )
+
+            title_row = ''
+            if show_titles:
+                title_row = (
+                    f'<TR><TD COLSPAN="2" BGCOLOR="{fill}" CELLPADDING="3" ALIGN="CENTER">'
+                    f'<FONT COLOR="#FFFFFF" POINT-SIZE="8"><B>'
+                    f'{_html.escape(title_text)}</B></FONT></TD></TR>'
+                )
+
+            return (
+                f'<<TABLE BORDER="1" COLOR="{fill}" CELLBORDER="0" CELLSPACING="0" '
+                f'CELLPADDING="0" STYLE="ROUNDED" BGCOLOR="#FFFFFF">'
+                f'{title_row}'
+                f'<TR>{avatar_cell}'
+                f'<TD ALIGN="LEFT" CELLPADDING="5">'
+                f'<FONT POINT-SIZE="9" COLOR="#1F2937"><B>'
+                f'{_html.escape(short_name)}</B></FONT>'
+                f'{sub_row}'
+                f'</TD></TR></TABLE>>'
+            )
+
         def _emit_node(e: dict, indent: str = "  ") -> str:
             colors = _color_for_emp(e)
+            if visio_style:
+                return f'{indent}"{e["emp_no"]}" [label={_visio_node_label(e, colors["fill"])}];'
             return (
                 f'{indent}"{e["emp_no"]}" [label={_node_label(e)}, '
                 f'fillcolor="{colors["fill"]}", color="{colors["border"]}", '
                 f'fontcolor="{colors["font"]}"];'
             )
 
-        # Decide layout: clusters by department or flat
-        if show_dept_headers:
+        # Decide layout: Visio-style team clusters, dept clusters, or flat
+        if visio_style:
+            # Detect "teams" — parents whose visible children are all leaves
+            teams = _find_team_clusters(visible_emps, children_of, visible)
+            team_member_set: set[str] = set()
+            for members in teams.values():
+                team_member_set.update(members)
+
+            # 1) Emit nodes NOT in any team as standalone
+            for emp in visible_emps:
+                if emp["emp_no"] not in team_member_set:
+                    dot_lines.append(_emit_node(emp))
+
+            # 2) Emit each team as an invisible cluster with a vertical chain
+            #    of invisible edges (forces members into a single column)
+            for i, (parent_no, members) in enumerate(teams.items()):
+                dot_lines.append(f'  subgraph cluster_team_{i} {{')
+                dot_lines.append('    style=invis;')
+                for member_no in members:
+                    member_emp = by_no[member_no]
+                    dot_lines.append(_emit_node(member_emp, indent="    "))
+                if len(members) >= 2:
+                    chain = ' -> '.join(f'"{m}"' for m in members)
+                    dot_lines.append(f'    {chain} [style=invis];')
+                dot_lines.append('  }')
+
+        elif show_dept_headers:
             # Group visible employees by department
             by_dept: dict[str, list[dict]] = {}
             for e in visible_emps:
@@ -415,6 +535,30 @@ with tab_visual:
 
         dot_lines.append("}")
         dot_source = "\n".join(dot_lines)
+
+        # ── Title block above the chart (Visio-style mode shows it prominently) ──
+        from datetime import date as _date
+        company_name = "ANCA Manufacturing Solutions (Thailand) Ltd."
+        chart_subtitle = f"Organization Chart — {chart_root_label if chart_root else 'Complete'} ({len(visible_emps)} employees)"
+        effective_date = _date.today().strftime("%d %B %Y")
+
+        st.markdown(
+            f"""
+<div style="display:flex; justify-content:space-between; align-items:flex-start;
+            padding:10px 14px; margin-bottom:10px; border-bottom:2px solid #009ADE;">
+  <div>
+    <div style="font-size:18px; font-weight:700; color:#1F4E79;">{_html.escape(company_name)}</div>
+    <div style="font-size:11px; color:#6B7280; margin-top:2px;">{_html.escape(chart_subtitle)}</div>
+  </div>
+  <div style="text-align:right; font-size:10px; color:#6B7280; line-height:1.5;">
+    <div><b>Effective:</b> {effective_date}</div>
+    <div><b>Total Employees:</b> {len(visible_emps)}</div>
+    <div><i>Generated from Anca HR App</i></div>
+  </div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
 
         svg = None
         try:
@@ -516,6 +660,38 @@ with tab_visual:
                     help="PNG rendering failed — falling back to DOT source",
                     use_container_width=True,
                 )
+
+        # ── Signature block below the chart (find the org's top GM if available) ──
+        gm_emp = None
+        for emp in visible_emps:
+            if (emp.get("title") or "").lower().strip() in ("general manager", "ceo", "managing director"):
+                gm_emp = emp
+                break
+        if not gm_emp and visible_emps:
+            # Fall back to the root of the visible tree (whoever has no visible parent)
+            visible_set_local = set(emp["emp_no"] for emp in visible_emps)
+            roots = [e for e in visible_emps
+                       if (e.get("manager_emp_no") or "") not in visible_set_local]
+            if roots:
+                gm_emp = roots[0]
+
+        if gm_emp:
+            gm_name = _format_short_name(gm_emp.get("emp_name") or "?", gm_emp.get("nickname") or "")
+            gm_title = gm_emp.get("title") or "General Manager"
+            st.markdown(
+                f"""
+<div style="display:flex; justify-content:flex-end; margin-top:30px; padding:0 14px;">
+  <div style="text-align:center; min-width:220px;">
+    <div style="border-top:1px solid #6B7280; padding-top:6px; font-size:11px; color:#374151;">
+      <div><b>{_html.escape(gm_name)}</b></div>
+      <div style="color:#6B7280;">{_html.escape(gm_title)}</div>
+      <div style="margin-top:8px; color:#9CA3AF;">Date: ________________</div>
+    </div>
+  </div>
+</div>
+""",
+                unsafe_allow_html=True,
+            )
 
 
 # ── Table view ──
