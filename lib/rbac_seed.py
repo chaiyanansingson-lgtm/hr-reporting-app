@@ -1,5 +1,6 @@
 """
 RBAC seed data for Anca HR App.
+v11.5 — Module 3 Salary & Compensation activated (2026-05-14).
 v11.4 — RBAC Phase 1 foundation (2026-05-08).
 
 Seeds the canonical roles, modules, capabilities, default role-capability
@@ -17,6 +18,13 @@ Idempotency rules:
 Tweak applied per user request 2026-05-08:
   Supervisor does NOT receive 'report.submit_changes' — only system.login
   and orgchart.view.
+
+v11.5 changes (2026-05-14):
+  - 'salary' module flipped from is_active=0 to is_active=1 (now usable)
+  - Module access_cap renamed 'salary.access' → 'salary.view' (matches code)
+  - 6 new salary.* capabilities registered
+  - Role defaults: finance/admin/super_admin get salary access (others none)
+  - 'salary.edit_bands' restricted to super_admin only (sensitive operation)
 
 Public function:
     seed_rbac_defaults() -> dict   summary of seeded rows
@@ -79,20 +87,20 @@ ROLES = [
     {
         "role_key": "finance", "rank": 5, "is_external": 0,
         "name_en": "Finance Manager", "name_th": "ผู้จัดการฝ่ายการเงิน",
-        "desc_en": "Finance / budget owner — all-dept reports",
-        "desc_th": "ผู้จัดการฝ่ายการเงิน — ดูรายงานทุกแผนก",
+        "desc_en": "Finance / budget owner — all-dept reports + salary module access",
+        "desc_th": "ผู้จัดการฝ่ายการเงิน — ดูรายงานทุกแผนก และเข้าถึงโมดูลเงินเดือน",
     },
     {
         "role_key": "admin", "rank": 6, "is_external": 0,
         "name_en": "Admin", "name_th": "ผู้ดูแลระบบ",
-        "desc_en": "Data entry & user management — cannot edit roles or salary",
-        "desc_th": "ผู้ดูแลระบบ — จัดการข้อมูลและผู้ใช้ (แก้ไขบทบาทหรือเงินเดือนไม่ได้)",
+        "desc_en": "Data entry & user management — cannot edit roles or salary bands",
+        "desc_th": "ผู้ดูแลระบบ — จัดการข้อมูลและผู้ใช้ (แก้ไขบทบาทหรือช่วงเงินเดือนไม่ได้)",
     },
     {
         "role_key": "super_admin", "rank": 7, "is_external": 0,
         "name_en": "Super Admin", "name_th": "ผู้ดูแลระบบสูงสุด",
-        "desc_en": "Full access — only role that can edit role defaults & per-user overrides",
-        "desc_th": "ผู้ดูแลระบบสูงสุด — บทบาทเดียวที่แก้ไขสิทธิ์เริ่มต้นและสิทธิ์เฉพาะบุคคลได้",
+        "desc_en": "Full access — only role that can edit role defaults, salary bands & per-user overrides",
+        "desc_th": "ผู้ดูแลระบบสูงสุด — บทบาทเดียวที่แก้ไขสิทธิ์เริ่มต้น ช่วงเงินเดือน และสิทธิ์เฉพาะบุคคลได้",
     },
 ]
 
@@ -116,11 +124,12 @@ MODULES = [
      "icon": "💼", "access_cap": "budget.access",
      "desc_en": "(Coming soon) Headcount budget vs actual",
      "desc_th": "(เปิดให้ใช้งานเร็ว ๆ นี้) งบประมาณกำลังคนเทียบกับจริง"},
-    {"module_key": "salary", "sort_order": 40, "is_active": 0, "is_external_allowed": 0,
+    # ── v11.5: Salary module ACTIVATED — was is_active=0, now is_active=1 ──
+    {"module_key": "salary", "sort_order": 40, "is_active": 1, "is_external_allowed": 0,
      "name_en": "Salary & Compensation", "name_th": "เงินเดือนและค่าตอบแทน",
-     "icon": "💰", "access_cap": "salary.access",
-     "desc_en": "(Coming soon) Salary structure and compensation reports",
-     "desc_th": "(เปิดให้ใช้งานเร็ว ๆ นี้) โครงสร้างเงินเดือนและรายงานค่าตอบแทน"},
+     "icon": "💰", "access_cap": "salary.view",
+     "desc_en": "15-grade structure, offer calculator, market benchmark, statutory compliance (SSO/PVF/WCF/EWF)",
+     "desc_th": "โครงสร้าง 15 ระดับ, เครื่องคำนวณข้อเสนอ, การเทียบตลาด, การปฏิบัติตามกฎหมาย (SSO/PVF/WCF/EWF)"},
     {"module_key": "training", "sort_order": 50, "is_active": 0, "is_external_allowed": 0,
      "name_en": "Training Records", "name_th": "บันทึกการฝึกอบรม",
      "icon": "🎓", "access_cap": "training.access",
@@ -173,6 +182,14 @@ CAPABILITIES = [
 
     # Visitor Portal module
     ("visitor.access",              "visitor", "module", "Can access Visitor Portal",                 "เข้าถึงพอร์ทัลผู้เยี่ยมชม"),
+
+    # ── v11.5: Salary & Compensation module ──────────────────────────────
+    ("salary.view",                 "salary", "module", "Can see Salary module on hub & view structure", "เข้าถึงโมดูลเงินเดือนและดูโครงสร้าง"),
+    ("salary.calculate_offer",      "salary", "action", "Can use the new-hire offer calculator",      "ใช้เครื่องคำนวณข้อเสนอผู้สมัครใหม่"),
+    ("salary.upload",               "salary", "action", "Can upload salary master data",              "อัปโหลดข้อมูลเงินเดือนหลัก"),
+    ("salary.export",               "salary", "action", "Can export salary data to Excel",            "ส่งออกข้อมูลเงินเดือนเป็น Excel"),
+    ("salary.edit_bands",           "salary", "action", "Can edit grade bands (Super Admin only)",    "แก้ไขช่วงเงินเดือนระดับ (เฉพาะ Super Admin)"),
+    ("salary.view_audit",           "salary", "action", "Can view saved offer audit trail",           "ดูประวัติการคำนวณข้อเสนอที่บันทึกไว้"),
 ]
 
 
@@ -192,18 +209,27 @@ ROLE_CAPS = {
         "system.login",
         "orgchart.view",
         # Per tweak 2026-05-08: Supervisor only views org chart. No report.submit_changes.
+        # Per v11.5 (2026-05-14): Supervisor has NO salary access by default.
+        # Super Admin can grant per-user via override UI if a specific supervisor
+        # needs offer-calculator access for hiring discussions.
     ],
     "manager": [
         "system.login",
         "report.access", "report.view_own_dept", "report.approve_changes",
         "report.submit_changes", "report.view_charts", "report.export",
         "orgchart.view",
+        # Per v11.5: 'manager' role has NO salary access by default.
+        # HR Manager and Finance Manager should be assigned the 'finance' role
+        # (which carries salary.view / calculate_offer / upload / export / view_audit).
     ],
     "finance": [
         "system.login",
         "report.access", "report.view_all", "report.approve_changes",
         "report.submit_changes", "report.view_charts", "report.export",
         "orgchart.view",
+        # v11.5 — Salary module access for Finance / HR Manager
+        "salary.view", "salary.calculate_offer", "salary.upload",
+        "salary.export", "salary.view_audit",
     ],
     "admin": [
         "system.login",
@@ -211,6 +237,8 @@ ROLE_CAPS = {
         "report.access", "report.view_all", "report.upload", "report.edit_config",
         "report.approve_changes", "report.submit_changes", "report.view_charts", "report.export",
         "orgchart.view", "orgchart.edit",
+        # v11.5 — Salary read + calculator + audit (no edit_bands, no upload, no export)
+        "salary.view", "salary.calculate_offer", "salary.view_audit",
     ],
     "super_admin": [
         "system.login",
@@ -219,6 +247,9 @@ ROLE_CAPS = {
         "report.access", "report.view_all", "report.upload", "report.edit_config",
         "report.approve_changes", "report.submit_changes", "report.view_charts", "report.export",
         "orgchart.view", "orgchart.edit",
+        # v11.5 — Full salary access including edit_bands
+        "salary.view", "salary.calculate_offer", "salary.upload",
+        "salary.export", "salary.edit_bands", "salary.view_audit",
     ],
 }
 
@@ -253,6 +284,22 @@ def seed_rbac_defaults(db_path: Optional[str] = None) -> dict:
     """Seed roles/modules/capabilities, the default matrix, and bootstrap user_roles.
     Idempotent — safe to call on every app start.
 
+    v11.5 note: this function does NOT re-seed role_capabilities for a role that
+    already has any rows. So if you deployed v11.4 and the 'finance' role already
+    has 7 caps in the DB, this redeploy will NOT add the new salary.* caps to
+    that role's existing matrix. You have two options:
+
+      Option A — UI (preferred): log in as Super Admin → System ▸ Role Editor →
+                tick the new salary.* boxes for Finance / Admin / Super Admin →
+                Save. This preserves any other customisations.
+
+      Option B — Forced re-seed (destroys role customisations): manually clear
+                role_capabilities table, then redeploy. Only do this if you
+                haven't customised the matrix.
+
+      Option C — Targeted backfill: run the small script in v11.5 release notes
+                that inserts ONLY the missing salary.* role_capabilities rows.
+
     Returns a summary dict.
     """
     path = _resolve_db_path(db_path)
@@ -281,6 +328,12 @@ def seed_rbac_defaults(db_path: Optional[str] = None) -> dict:
             summary["roles_inserted"] += cur.rowcount
 
         # 2. Modules
+        # NOTE v11.5: 'salary' module is_active is now 1 in the MODULES list above,
+        # but INSERT OR IGNORE means an EXISTING DB row with is_active=0 will NOT
+        # be updated by this seeder. After deploying v11.5, run this one-liner
+        # manually OR use the Super Admin module editor to activate it:
+        #   UPDATE modules SET is_active=1, access_capability_key='salary.view'
+        #   WHERE module_key='salary';
         for m in MODULES:
             cur = conn.execute(
                 """INSERT OR IGNORE INTO modules
@@ -293,6 +346,22 @@ def seed_rbac_defaults(db_path: Optional[str] = None) -> dict:
                  m["access_cap"], m["desc_en"], m["desc_th"]),
             )
             summary["modules_inserted"] += cur.rowcount
+
+        # 2b. v11.5 — Force-activate 'salary' module on existing deployments.
+        # This is safe because there's only one row for the salary module and
+        # we want it active everywhere after the v11.5 deployment.
+        conn.execute(
+            """UPDATE modules
+               SET is_active = 1,
+                   access_capability_key = 'salary.view',
+                   description_en = ?,
+                   description_th = ?
+               WHERE module_key = 'salary'""",
+            (
+                "15-grade structure, offer calculator, market benchmark, statutory compliance (SSO/PVF/WCF/EWF)",
+                "โครงสร้าง 15 ระดับ, เครื่องคำนวณข้อเสนอ, การเทียบตลาด, การปฏิบัติตามกฎหมาย (SSO/PVF/WCF/EWF)",
+            ),
+        )
 
         # 3. Capabilities
         for cap_key, mod_key, cap_type, desc_en, desc_th in CAPABILITIES:
@@ -323,12 +392,34 @@ def seed_rbac_defaults(db_path: Optional[str] = None) -> dict:
                     )
                 summary["role_caps_seeded_for"].append(role_key)
 
+        # 4b. v11.5 — Targeted backfill: add NEW salary.* capabilities to
+        # existing role matrices (finance/admin/super_admin) without touching
+        # any custom changes already made via the role editor. INSERT OR IGNORE
+        # ensures we never duplicate or overwrite.
+        salary_backfill = {
+            "finance":     ["salary.view", "salary.calculate_offer", "salary.upload",
+                            "salary.export", "salary.view_audit"],
+            "admin":       ["salary.view", "salary.calculate_offer", "salary.view_audit"],
+            "super_admin": ["salary.view", "salary.calculate_offer", "salary.upload",
+                            "salary.export", "salary.edit_bands", "salary.view_audit"],
+        }
+        backfilled = 0
+        for role_key, new_caps in salary_backfill.items():
+            for cap_key in new_caps:
+                cur = conn.execute(
+                    """INSERT OR IGNORE INTO role_capabilities
+                       (role_key, capability_key) VALUES (?, ?)""",
+                    (role_key, cap_key),
+                )
+                backfilled += cur.rowcount
+        summary["salary_caps_backfilled"] = backfilled
+
         # 5. Bootstrap user_roles for default v11.3 accounts
         for username, role_key in USER_MIGRATION_MAP.items():
             cur = conn.execute(
                 """INSERT OR IGNORE INTO user_roles
                    (username, role_key, set_by_username, note)
-                   VALUES (?, ?, 'rbac_seed_v11.4', 'Initial seed from USER_MIGRATION_MAP')""",
+                   VALUES (?, ?, 'rbac_seed_v11.5', 'Initial seed from USER_MIGRATION_MAP')""",
                 (username, role_key),
             )
             summary["user_roles_inserted"] += cur.rowcount
