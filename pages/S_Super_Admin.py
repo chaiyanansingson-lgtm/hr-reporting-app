@@ -82,7 +82,7 @@ with t_conf:
     st.markdown("**อัปโหลดโครงสร้างเงินเดือน (ลับ) · Upload salary structure "
                 "(confidential)**")
     up = st.file_uploader("ANCA Current Staff Salary Structure (.xlsx)",
-                          type=["xlsx"], key="sa_salary_struct")
+                          type=["xlsx", "CSV", "xls"], key="sa_salary_struct")
     if up is not None:
         st.caption("⏳ การนำเข้าและจับคู่โครงสร้างเงินเดือนเข้ากับพนักงาน (เพื่อใช้ในสลิป/"
                    "หนังสือรับรอง) กำลังถูกพัฒนาเป็นลำดับถัดไป · Parsing + mapping the "
