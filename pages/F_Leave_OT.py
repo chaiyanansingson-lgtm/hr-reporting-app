@@ -60,9 +60,10 @@ def _emit_print(html, name):
     """Offer the filled form as PDF (WeasyPrint) or HTML (browser Ctrl+P)."""
     pdf = print_docs.html_to_pdf(html)
     if pdf:
-        st.download_button("⬇️ ดาวน์โหลด PDF / Download PDF", pdf,
-                           file_name=name + ".pdf", mime="application/pdf",
-                           key="dl_" + name, use_container_width=True)
+        st.download_button("⬇️ ดาวน์โหลด HTML (Ctrl+P → Save as PDF)",
+                           html.encode("utf-8"), file_name=name + ".html",
+                           mime="text/html", key="dlh_" + name,
+                           use_container_width=True)
     else:
         st.download_button("⬇️ ดาวน์โหลด HTML (Ctrl+P → Save as PDF)",
                            html.encode("utf-8"), file_name=name + ".html",
