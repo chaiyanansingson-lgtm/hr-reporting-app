@@ -5,7 +5,7 @@ enableXsrfProtection = true
 [browser]
 gatherUsageStats = false
 
-# Anca CI theme — white-major, brand purple primary
+# ANCA CI theme — white-major, brand purple primary
 [theme]
 base = "light"
 primaryColor = "#715091"

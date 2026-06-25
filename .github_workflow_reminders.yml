@@ -1,0 +1,24 @@
+# Copy this file to .github/workflows/reminders.yml in your repo, then add
+# repository Secrets: DATABASE_URL, SMTP_HOST, SMTP_PORT, SMTP_USER,
+# SMTP_PASSWORD, SMTP_FROM. Runs every day 09:00 Bangkok (02:00 UTC).
+name: Daily approval reminders
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch: {}
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install psycopg2-binary streamlit openpyxl Pillow
+      - run: python scripts/send_reminders.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}

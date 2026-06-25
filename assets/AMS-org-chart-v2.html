@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ANCA Manufacturing Solutions — Organisation Chart</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Noto+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue:#009ADE;--purple:#715091;--magenta:#E31D93;
+    --ink:#2b2f3a;--ink-soft:#6b7280;--line:#cfd6e4;--card-bd:#e4e8f0;
+    --bg:#f4f6fb;--panel:#fff;
+    --shadow:0 1px 2px rgba(20,30,60,.06),0 6px 18px rgba(20,30,60,.06);
+    --shadow-hi:0 6px 14px rgba(0,154,222,.18),0 14px 36px rgba(20,30,60,.14);
+    --radius:14px;--font:"Hanken Grotesk","Noto Sans Thai",ui-sans-serif,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}html,body{height:100%}
+  body{margin:0;font-family:var(--font);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;overflow:hidden}
+  .topbar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:16px 24px;background:var(--panel);border-bottom:1px solid var(--card-bd)}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand .logo{width:38px;height:38px;border-radius:10px;flex:none;background:linear-gradient(135deg,var(--blue),var(--purple) 55%,var(--magenta));display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;box-shadow:0 4px 10px rgba(113,80,145,.3)}
+  .titles h1{margin:0;font-size:19px;font-weight:800;letter-spacing:-.02em}
+  .titles p{margin:1px 0 0;font-size:12.5px;color:var(--ink-soft);font-weight:500}
+  .seg{display:inline-flex;background:#eef1f7;border-radius:10px;padding:4px;gap:2px}
+  .seg button{border:0;background:transparent;font-family:inherit;font-weight:600;font-size:13px;color:var(--ink-soft);padding:7px 14px;border-radius:7px;cursor:pointer;transition:.15s}
+  .seg button.active{background:var(--purple);color:#fff;box-shadow:0 2px 6px rgba(113,80,145,.35)}
+  .search{position:relative;flex:1;min-width:200px;max-width:420px}
+  .search input{width:100%;font-family:inherit;font-size:14px;color:var(--ink);padding:11px 14px 11px 40px;border:1px solid var(--card-bd);border-radius:10px;background:#fff;outline:none;transition:.15s}
+  .search input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,154,222,.15)}
+  .search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--ink-soft)}
+  .spacer{flex:1}.actions{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:7px;font-family:inherit;font-weight:600;font-size:13px;color:var(--ink);background:#fff;border:1px solid var(--card-bd);border-radius:9px;padding:9px 13px;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--blue);color:var(--blue)}.btn svg{width:15px;height:15px}
+  .stats{display:flex;gap:26px;align-items:center;padding:10px 24px;background:var(--panel);border-bottom:1px solid var(--card-bd);flex-wrap:wrap}
+  .stat{display:flex;align-items:baseline;gap:7px}
+  .stat b{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
+  .stat span{font-size:12.5px;color:var(--ink-soft);font-weight:500}
+  .stat .dot{width:9px;height:9px;border-radius:50%}
+  .viewport{position:relative;height:calc(100vh - 137px);overflow:hidden;cursor:grab;background:radial-gradient(circle at 1px 1px,rgba(43,47,58,.07) 1px,transparent 0) 0 0/26px 26px}
+  .viewport.grabbing{cursor:grabbing}
+  .canvas{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform;padding:60px}
+  .zoombar{position:absolute;left:18px;top:18px;display:flex;flex-direction:column;gap:8px;z-index:5}
+  .zoombar button{width:40px;height:40px;border-radius:10px;border:1px solid var(--card-bd);background:#fff;color:var(--ink);display:grid;place-items:center;cursor:pointer;box-shadow:var(--shadow);transition:.15s}
+  .zoombar button:hover{color:var(--blue);border-color:var(--blue)}.zoombar svg{width:18px;height:18px}
+  .zoomlevel{position:absolute;left:18px;bottom:18px;background:#fff;border:1px solid var(--card-bd);border-radius:8px;padding:6px 11px;font-size:12px;font-weight:700;color:var(--ink-soft);box-shadow:var(--shadow);font-variant-numeric:tabular-nums}
+  .forest{display:flex;align-items:flex-start;gap:80px}
+  .tree,.tree ul,.tree li{position:relative;margin:0;padding:0}
+  .tree ul{display:flex;justify-content:center;padding-top:30px;list-style:none}
+  .tree li{list-style:none;display:flex;flex-direction:column;align-items:center;padding:30px 14px 0}
+  .tree li::before,.tree li::after{content:'';position:absolute;top:0;width:50%;height:30px;border-top:2px solid var(--line)}
+  .tree li::after{left:50%;border-left:2px solid var(--line)}
+  .tree li::before{right:50%;border-right:2px solid var(--line)}
+  .tree li:only-child::after,.tree li:only-child::before{display:none}
+  .tree li:only-child{padding-top:30px}
+  .tree li:first-child::before,.tree li:last-child::after{border:0}
+  .tree li:last-child::before{border-right:2px solid var(--line)}
+  .tree ul ul::before{content:'';position:absolute;top:0;left:50%;border-left:2px solid var(--line);width:0;height:30px}
+  .tree li.collapsed>ul{display:none}
+  .node{position:relative;width:240px;background:#fff;border:1px solid var(--card-bd);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;text-align:left;transition:transform .15s,box-shadow .15s,border-color .15s,opacity .15s}
+  .node::before{content:'';position:absolute;left:0;top:14px;bottom:14px;width:4px;border-radius:4px;background:var(--blue)}
+  .node[data-depth="0"]::before{background:var(--purple)}
+  .node[data-depth="1"]::before{background:var(--blue)}
+  .node[data-depth="2"]::before{background:var(--magenta)}
+  .node[data-depth="3"]::before{background:#16a34a}
+  .node[data-depth="4"]::before{background:#f59e0b}
+  .node:hover{transform:translateY(-2px);box-shadow:var(--shadow-hi);border-color:var(--blue)}
+  .node .name{font-weight:700;font-size:14.5px;line-height:1.25;padding-right:20px}
+  .node .lead{font-size:12px;color:var(--purple);font-weight:600;margin-top:2px}
+  .node .tag{display:inline-block;margin-top:7px;font-size:10.5px;font-weight:700;color:var(--blue);background:rgba(0,154,222,.1);padding:2px 8px;border-radius:20px}
+  .node .metrics{margin-top:9px;display:flex;flex-direction:column;gap:3px}
+  .node .metric{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-soft);font-weight:500}
+  .node .metric b{color:var(--ink);font-weight:800;font-variant-numeric:tabular-nums;min-width:34px}
+  .node .metric .k{width:6px;height:6px;border-radius:50%;background:var(--line)}
+  .node .metric.m1 .k{background:var(--blue)}
+  .toggle{position:absolute;right:10px;top:12px;width:22px;height:22px;border-radius:7px;border:1px solid var(--card-bd);background:#fff;display:grid;place-items:center;cursor:pointer;color:var(--ink-soft);transition:.15s}
+  .toggle:hover{color:var(--blue);border-color:var(--blue)}.toggle svg{width:13px;height:13px;transition:transform .2s}
+  li.collapsed>.node .toggle svg{transform:rotate(-90deg)}
+  li.collapsed>.node .toggle{background:var(--blue);border-color:var(--blue);color:#fff}
+  .node.match{border-color:var(--magenta);box-shadow:0 0 0 3px rgba(227,29,147,.18)}
+  .node.dim{opacity:.3}
+
+  .node .head{display:flex;gap:10px;align-items:flex-start}
+  .avatar{width:44px;height:44px;border-radius:12px;flex:none;object-fit:cover;border:1px solid var(--card-bd);background:#eef1f7}
+  .avatar.init{display:grid;place-items:center;font-weight:800;font-size:15px;color:#fff;background:linear-gradient(135deg,var(--blue),var(--purple))}
+  .node .headtxt{min-width:0}
+  .node{cursor:pointer}
+  .capturing .viewport, .capturing .canvas{overflow:visible!important}
+
+  /* ---- VERTICAL stacking for large teams ----
+     When a manager has many direct reports, their <ul> gets class "stack":
+     children list downward in a single column instead of a wide row. The
+     connector becomes an elbow on the left, like an indented list. */
+  .tree ul.stack{flex-direction:column;align-items:flex-start;padding-top:30px;
+    padding-left:46px;gap:0}
+  .tree ul.stack>li{padding:0 0 14px 0;align-items:flex-start}
+  .tree ul.stack>li::before,.tree ul.stack>li::after{display:none}
+  /* a single vertical spine down the column */
+  .tree ul.stack::before{content:'';position:absolute;left:22px;top:0;bottom:22px;
+    width:2px;background:var(--line)}
+  /* horizontal elbow from spine into each card */
+  .tree ul.stack>li>.node::after{content:'';position:absolute;left:-24px;top:28px;
+    width:24px;height:2px;background:var(--line)}
+  .tree ul.stack>li>.node{margin-left:0}
+  /* nested children of a stacked node keep the normal tree below them */
+  .tree ul.stack ul{padding-left:0}
+
+  /* ---- profile bubble (click a card) ---- */
+  .pop-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.32);z-index:40;
+    display:none;align-items:flex-start;justify-content:center;padding-top:6vh}
+  .pop-backdrop.on{display:flex}
+  .pop{width:380px;max-width:92vw;background:#fff;border-radius:18px;
+    box-shadow:0 24px 60px rgba(15,23,42,.28);overflow:hidden;animation:popin .16s ease-out}
+  @keyframes popin{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+  .pop .ph{display:flex;gap:14px;align-items:center;padding:18px 20px;
+    background:linear-gradient(120deg,var(--blue),var(--purple) 80%);color:#fff}
+  .pop .ph .av{width:58px;height:58px;border-radius:14px;object-fit:cover;flex:none;
+    border:2px solid rgba(255,255,255,.6);background:#dfe6f2}
+  .pop .ph .av.init{display:grid;place-items:center;font-weight:800;font-size:20px;color:#fff;
+    background:linear-gradient(135deg,#6ea8d8,#9a7fb8)}
+  .pop .ph .nm{font-weight:800;font-size:17px;line-height:1.2}
+  .pop .ph .ro{font-size:12.5px;opacity:.92;margin-top:2px}
+  .pop .bd{padding:8px 20px 6px}
+  .pop .row{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid #eef1f6;font-size:13px}
+  .pop .row:last-child{border-bottom:0}
+  .pop .row .lb{width:108px;color:var(--ink-soft);font-weight:600;flex:none}
+  .pop .row .vl{color:var(--ink);font-weight:600;word-break:break-word}
+  .pop .ft{padding:12px 20px 18px;display:flex;gap:10px}
+  .pop .ft button{flex:1;padding:11px;border-radius:11px;border:0;font-weight:700;font-size:13.5px;cursor:pointer}
+  .pop .ft .more{background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff}
+  .pop .ft .close{background:#eef1f6;color:var(--ink-soft)}
+  .pop .hint{font-size:11px;color:var(--ink-soft);padding:0 20px 14px;margin-top:-4px}
+  @media(max-width:720px){.titles p{display:none}.stats{gap:16px}}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">A</div>
+      <div class="titles"><h1>Organisation Chart</h1><p id="subtitle">Reporting Lines</p></div>
+    </div>
+    <div class="seg" id="viewSeg">
+      <button class="active" data-view="people">Reporting Lines</button>
+      <button data-view="units">Business Units</button>
+    </div>
+    <label class="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="search" type="text" placeholder="Search name, title or department…" autocomplete="off">
+    </label>
+    <div class="spacer"></div>
+    <div class="actions">
+            
+      <button class="btn" id="expandAll"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 13l5 5 5-5M7 7l5 5 5-5"/></svg>Expand all</button>
+      <button class="btn" id="collapseAll"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 11l-5-5-5 5M17 17l-5-5-5 5"/></svg>Collapse</button>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat"><span class="dot" style="background:var(--purple)"></span><b id="s1">0</b><span id="l1">people</span></div>
+    <div class="stat"><span class="dot" style="background:var(--blue)"></span><b id="s2">0</b><span id="l2">departments</span></div>
+    <div class="stat"><span class="dot" style="background:var(--magenta)"></span><b id="s3">0</b><span id="l3">top-level</span></div>
+  </div>
+  <div class="viewport" id="viewport">
+    <div class="zoombar">
+      <button id="zoomIn" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button id="zoomOut" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+      <button id="fit" title="Fit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+      <button id="reset" title="Reset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.3 2.6L3 8"/><path d="M3 3v5h5"/></svg></button>
+    </div>
+    <div class="canvas" id="canvas"></div>
+    <div class="zoomlevel" id="zoomLevel">100%</div>
+  </div>
+<script>
+/* Data generated from Employee_List_MASTER (as of 2026-04-28). */
+const DB = {"people": [{"name": "Nicholas Doyle  (Nicky)", "lead": "General Manager", "tag": "Admin", "metrics": [{"v": 10, "l": "Direct reports"}, {"v": 172, "l": "Team size"}], "children": [{"name": "Ekphusit Boonjong  (Aek)", "lead": "Operation Director", "tag": "Production Support", "metrics": [{"v": 5, "l": "Direct reports"}, {"v": 115, "l": "Team size"}], "children": [{"name": "Somchai Srijun  (Jha)", "lead": "Production Manager", "tag": "Production Support", "metrics": [{"v": 4, "l": "Direct reports"}, {"v": 83, "l": "Team size"}], "children": [{"name": "Amontap Chaisit  (Lek)", "lead": "Production Supervisor", "tag": "Production Support", "metrics": [{"v": 35, "l": "Direct reports"}, {"v": 36, "l": "Team size"}], "children": [{"name": "Anucha Sansanit  (Erk)", "lead": "Welding", "tag": "Non-Anca Small Tool", "metrics": []}, {"name": "Apipat Bunchu  (Sack)", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Arthit Chongmungkung  (Lhun)", "lead": "Welder", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Bancha Thiamloed  (Bee)", "lead": "Weld", "tag": "Anca Weld", "metrics": []}, {"name": "Chatchawan Dapa  (Joe)", "lead": "Weld", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Chetsadaphon Sarasuk  (Nu)", "lead": "Weld", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Issala Takoonram  (Film)", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Kananek Thaisong  (Mon)", "lead": "Grinding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Koravik See-udorn  (Neng)", "lead": "Welding", "tag": "Anca Weld", "metrics": []}, {"name": "Manit Dermthamram  (Saeng)", "lead": "Leader - Weld NON-ANCA", "tag": "Weld", "metrics": []}, {"name": "Narong Mathipikhai  (Den)", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Natthawut Bunrung  (Nhum)", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Nattiphol Sathipjan  (Chuan)", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Nirawut Khantimit  (Nu)", "lead": "Weld", "tag": "Anca Weld", "metrics": []}, {"name": "Nit Sangthung  (Nik)", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Patiphat Chairat  (Art)", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Phongsathon Bunsai", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Phoobes Paidong  (Beer)", "lead": "Weld", "tag": "Anca Weld", "metrics": []}, {"name": "Phubetr Yaemsri", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Preecha Pratomwong  (So)", "lead": "Welder", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Ronnakon Sisomkhuan  (Zak)", "lead": "Grinding", "tag": "Anca Small Tool", "metrics": []}, {"name": "Saisumpan Karoon  (Kwan)", "lead": "Weld", "tag": "Anca Weld", "metrics": []}, {"name": "Sanan Homchaey  (Nok)", "lead": "Grinding", "tag": "Anca Small Tool", "metrics": []}, {"name": "Santisuk Saengnet  (Aee)", "lead": "Welder", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Sarawut Khrongsom  (Tod)", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Sarawut Suchachring  (Law)", "lead": "Welder", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Sitthipong Jantasena  (Sit)", "lead": "Grinding - Small tool", "tag": "Non-Anca Small Tool", "metrics": []}, {"name": "Sompol Thogrit  (Noi)", "lead": "Welding", "tag": "Anca Weld", "metrics": []}, {"name": "Somrak Mungpao", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Surat Wongyai  (Bee)", "lead": "Weld", "tag": "Anca Weld", "metrics": []}, {"name": "Tantap Bunpa  (Jame)", "lead": "Weld", "tag": "Anca Weld", "metrics": []}, {"name": "Thanapon Chanjang  (Dook)", "lead": "Welding", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Theerapong Sriwat  (Jack)", "lead": "Weld", "tag": "Non-Anca Weld", "metrics": []}, {"name": "Wiwat Chaiyasaen  (Tong)", "lead": "Grinding", "tag": "Anca Small Tool", "metrics": []}, {"name": "Wutchara Phunchuen  (Big)", "lead": "Weld", "tag": "Anca Weld", "metrics": []}]}, {"name": "Koson Tongkhot  (Koson)", "lead": "Production Supervisor", "tag": "Production Support", "metrics": [{"v": 19, "l": "Direct reports"}, {"v": 20, "l": "Team size"}], "children": [{"name": "A-Thai Changnga  (Ex)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Aekkaphod Chueaphaeng  (Ton)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Aitthiphon Khamkhrueang  (Ait)", "lead": "Production Operator", "tag": "Mixing", "metrics": []}, {"name": "Anan Suthisa  (Ouy)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Chantarakarn Kongkaew  (Don)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Chanuwat Seankamkol  (Tell)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Eakkawee Tritod  (Aek)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Jamnong Yodnean  (Nong)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Kiattisak Taosing  (Nueng)", "lead": "Production Operator", "tag": "Anca Small Tool", "metrics": []}, {"name": "Naphatchanan Thiangkong  (Bank)", "lead": "Production Operator", "tag": "Anca Small Tool", "metrics": []}, {"name": "Nilrut Seepan  (Tea)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Phonsiri Khamkrueang  (Ple)", "lead": "Production Admin", "tag": "Assembly-Admin", "metrics": []}, {"name": "Prasan Himchanthuek  (San)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Saipha Khewpae  (Nuong)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Tanong Mongkang  (Nong)", "lead": "Leader - Weld ANCA", "tag": "Weld", "metrics": []}, {"name": "Thirawat Nachamuen  (Tum)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Waritthorn Saithong  (Yok)", "lead": "Production Operator", "tag": "Paint", "metrics": []}, {"name": "Wasan Jadthaisong  (Note)", "lead": "Production Operator", "tag": "Anca Small Tool", "metrics": []}, {"name": "Wirat Surason  (Aof)", "lead": "Production Operator", "tag": "Anca Small Tool", "metrics": []}]}, {"name": "Kriangkai Runnajak  (Ja)", "lead": "Production Supervisor", "tag": "Assembly", "metrics": [{"v": 12, "l": "Direct reports"}, {"v": 13, "l": "Team size"}], "children": [{"name": "Chalermpong Sangthong  (June)", "lead": "Production Operator", "tag": "Assembly", "metrics": []}, {"name": "Choochai Nilada  (Aod)", "lead": "Production Operator", "tag": "Assembly", "metrics": []}, {"name": "Kranchit Kuankham-ui  (Bu)", "lead": "Production Operator", "tag": "Assembly", "metrics": []}, {"name": "Nantachai Somboot  (Art)", "lead": "Production Operator/Leak Test", "tag": "Assembly", "metrics": []}, {"name": "Nittaya Aban  (May)", "lead": "Production Operator", "tag": "Assembly", "metrics": []}, {"name": "Parinya Termsub  (Yod)", "lead": "Senior Production Operator", "tag": "Assembly", "metrics": []}, {"name": "Payu Khewpae  (Song)", "lead": "Production Operator/Leak Test", "tag": "Assembly", "metrics": []}, {"name": "Prateep Srisaychuea  (Teep)", "lead": "Leader - Assembly", "tag": "Assembly", "metrics": []}, {"name": "Ratchanon Nakphanao  (Time)", "lead": "Production Operator", "tag": "Assembly-Redflex", "metrics": []}, {"name": "Thanatip Phasukkee  (Pop)", "lead": "Production Operator", "tag": "Assembly", "metrics": []}, {"name": "Wichian Prasomsub  (Yim)", "lead": "Production Operator/Leak Test", "tag": "Assembly", "metrics": []}, {"name": "Wichnu Srimueangklang  (Big)", "lead": "Production Operator/Leak Test", "tag": "Assembly", "metrics": []}]}, {"name": "Thirat Thiangtrng  (Aew)", "lead": "Production Supervisor", "tag": "Production Support", "metrics": [{"v": 12, "l": "Direct reports"}, {"v": 13, "l": "Team size"}], "children": [{"name": "Aphichat Khamsung  (Jam)", "lead": "Production Operator", "tag": "Laser", "metrics": []}, {"name": "Direk Sonklin  (Dong)", "lead": "'Production Operator", "tag": "Fold", "metrics": []}, {"name": "Kowit Jukjan  (Wit)", "lead": "Production Operator", "tag": "Laser", "metrics": []}, {"name": "Lukson Yimkotak  (Tik)", "lead": "Leader - Laser and Folding", "tag": "Laser & Folding", "metrics": []}, {"name": "Montree Treecome  (Den)", "lead": "HK", "tag": "Laser", "metrics": []}, {"name": "Nathakit Tabcha  (Arm)", "lead": "LKF", "tag": "Fold", "metrics": []}, {"name": "Ratthaphon Suwan  (Arm)", "lead": "Marvel Material", "tag": "Laser", "metrics": []}, {"name": "Teerapaht Tammadool  (Tan)", "lead": "Production Operator", "tag": "Laser", "metrics": []}, {"name": "Thawtrakul Kumkaew  (Doy)", "lead": "Folding", "tag": "Fold", "metrics": []}, {"name": "Wannapa Chaimanid  (May)", "lead": "Production Admin", "tag": "Laser & Folding Admin", "metrics": []}, {"name": "Weerapol Siarum", "lead": "Waterjet", "tag": "Laser", "metrics": []}, {"name": "Wongsakorn Robkob  (Max)", "lead": "Production Operator", "tag": "Fold", "metrics": []}]}]}, {"name": "Pitipat Waritkittiwat  (Nine)", "lead": "Manufacturing Engineering Manager", "tag": "Production Support", "metrics": [{"v": 11, "l": "Direct reports"}, {"v": 12, "l": "Team size"}], "children": [{"name": "Jakkrawut Sompamit  (Add)", "lead": "Welder - NPI", "tag": "Production Support", "metrics": []}, {"name": "Krongpong Armatbandit  (Tong)", "lead": "Manufacturing Engineer", "tag": "Production Support", "metrics": []}, {"name": "Nawakorn Tasa  (Gan)", "lead": "Folding- NPI", "tag": "Production Support", "metrics": []}, {"name": "Pattana Sangsawang  (Go)", "lead": "Manufacturing Engineer", "tag": "Production Support", "metrics": []}, {"name": "Phongthep Puyason  (Arm)", "lead": "Manufacturing Technician", "tag": "Production Support", "metrics": []}, {"name": "Ratchanont Kiansuntia  (Nont)", "lead": "Manufacturing Engineer", "tag": "Production Support", "metrics": []}, {"name": "Sarawut Janmuen  (M)", "lead": "Prototype Team", "tag": "Production Support", "metrics": []}, {"name": "Seksun Namsang  (Bass)", "lead": "CNC Machine Shop Leader", "tag": "Production Support", "metrics": []}, {"name": "Sriwichai Kulprajuab  (Oh)", "lead": "Manufacturing Engineer", "tag": "Production Support", "metrics": []}, {"name": "Theppanomporn Kongphet  (Tong)", "lead": "Manufacturing Engineer", "tag": "Production Support", "metrics": []}, {"name": "Wongthira Thongkhrao  (Pom)", "lead": "Manufacturing Engineer", "tag": "Production Support", "metrics": []}]}, {"name": "Santi Wiangnail  (Aek)", "lead": "Quality Manager", "tag": "Quality", "metrics": [{"v": 9, "l": "Direct reports"}, {"v": 10, "l": "Team size"}], "children": [{"name": "Aonnisa Juntasok  (Ta-liw)", "lead": "Supplier Quality Engineer", "tag": "Quality", "metrics": []}, {"name": "Chiraphat Suksamran  (Kongkwan)", "lead": "Inspector", "tag": "Quality", "metrics": []}, {"name": "Jatrin Intamool  (Jet)", "lead": "Inspector", "tag": "Quality", "metrics": []}, {"name": "Jirawan Donladlee  (Janny)", "lead": "Inspector", "tag": "Quality", "metrics": []}, {"name": "Kraiwut Pongsan  (Golf)", "lead": "QC Supervisor", "tag": "Quality", "metrics": []}, {"name": "Pennapa Karaha  (Ma-Prang)", "lead": "QC Engineer", "tag": "Quality", "metrics": []}, {"name": "Prasert Sopaboon  (Poh)", "lead": "Inspector", "tag": "Quality", "metrics": []}, {"name": "Seewilai Thawonchon  (Kwan)", "lead": "In-Coming Inspector", "tag": "Quality", "metrics": []}, {"name": "Somsak Keawudom  (Ton)", "lead": "QC Leader", "tag": "Quality", "metrics": []}]}, {"name": "Sitthipong Kamnan  (Bom)", "lead": "Planning Manager", "tag": "Planning", "metrics": [{"v": 5, "l": "Direct reports"}, {"v": 6, "l": "Team size"}], "children": [{"name": "Janpen Prueangaophat  (Sa)", "lead": "Outsource Operator", "tag": "Planning", "metrics": []}, {"name": "Phatcharaporn Senaprom  (Ao)", "lead": "Planning admin", "tag": "Planning", "metrics": []}, {"name": "Piyaporn Vannavet  (Bee)", "lead": "Planining Admin", "tag": "Planning", "metrics": []}, {"name": "Ramida Mekchai  (Noi)", "lead": "WO and Mapping Admin", "tag": "Planning", "metrics": []}, {"name": "Seksit Chakhamjan  (Nueng)", "lead": "Outsource Operator", "tag": "Planning", "metrics": []}]}, {"name": "Jaturonk Withey  (Aun)", "lead": "Maintenance Manager", "tag": "Production Support", "metrics": [{"v": 2, "l": "Direct reports"}, {"v": 3, "l": "Team size"}], "children": [{"name": "Surasak Yunnan  (Ta)", "lead": "Maintenance Technician", "tag": "Production Support", "metrics": []}, {"name": "Surat Farksiangsa  (Rak)", "lead": "Maintenance Engineer", "tag": "Production Support", "metrics": []}]}]}, {"name": "Chanya Maimuangmoon  (Air)", "lead": "Supply Chains Manager", "tag": "Supply Chain", "metrics": [{"v": 5, "l": "Direct reports"}, {"v": 25, "l": "Team size"}], "children": [{"name": "Jiranut Karunarittiyothin  (Kang)", "lead": "Supply Chain Assistant Manager", "tag": "Supply Chain", "metrics": [{"v": 11, "l": "Direct reports"}, {"v": 12, "l": "Team size"}], "children": [{"name": "Aumpawun Chanya  (Aoi)", "lead": "Warehouse Admin", "tag": "Supply Chain(Prod)", "metrics": []}, {"name": "Channarong Silaoon  (Chan)", "lead": "Forklift Driver", "tag": "Supply Chain(Prod)", "metrics": []}, {"name": "Ketsak Phiophankham  (Kor)", "lead": "Forklift Driver", "tag": "Supply Chain(Prod)", "metrics": []}, {"name": "Koijai Phowichai  (Koi)", "lead": "Warehouse", "tag": "Supply Chain(Prod)", "metrics": []}, {"name": "Krissana Wangkumklang  (Rung)", "lead": "Forklift Driver", "tag": "Supply Chain(Prod)", "metrics": []}, {"name": "Narin Yotharak  (Moss)", "lead": "FG Store", "tag": "Supply Chain(Prod)", "metrics": []}, {"name": "Pongpun Chumkokground  (Knot)", "lead": "Store Leader", "tag": "Supply Chain(Prod)", "metrics": []}, {"name": "Pongworachai Chumchi  (Ao)", "lead": "Warehouse", "tag": "Supply Chain(Prod)", "metrics": []}, {"name": "Rewadee Tunchunnanon  (Ray)", "lead": "Logistic Admin", "tag": "Supply Chain(Prod)", "metrics": []}, {"name": "Suphat Janmuang  (Phat)", "lead": "Forklift Driver", "tag": "Supply Chain(Prod)", "metrics": []}, {"name": "Thirawat Lapthawi  (Dong)", "lead": "Warehouse", "tag": "Supply Chain(Prod)", "metrics": []}]}, {"name": "Chanchai Janpirom  (Chai)", "lead": "Packing Supervisor", "tag": "Packing", "metrics": [{"v": 8, "l": "Direct reports"}, {"v": 9, "l": "Team size"}], "children": [{"name": "Aphirak Desungnoen  (Te)", "lead": "Packer", "tag": "Packing", "metrics": []}, {"name": "Chatchai Tapjunda  (Pla)", "lead": "Packer", "tag": "Packing", "metrics": []}, {"name": "Chitphon Senanan  (Chai)", "lead": "Packer", "tag": "Packing", "metrics": []}, {"name": "Rangsan Jansupharuk  (Tong)", "lead": "Leader - Packing", "tag": "Packing", "metrics": []}, {"name": "Sombut Hansopla  (Boy)", "lead": "Packer", "tag": "Packing", "metrics": []}, {"name": "Sopit Sintuwong  (Poo)", "lead": "Packing Admin", "tag": "Packing Admin", "metrics": []}, {"name": "Thinnakorn Makkhawin  (Nil)", "lead": "Packer", "tag": "Packing", "metrics": []}, {"name": "Yuttana Kertpheng  (Pond)", "lead": "Packer", "tag": "Packing", "metrics": []}]}, {"name": "Natthaya Klanarong  (Pui)", "lead": "Indirect Material Control", "tag": "Purchasing", "metrics": []}, {"name": "Ronnachai Tongtae  (Ton)", "lead": "Inventory and Warehouse", "tag": "Supply Chain", "metrics": []}, {"name": "Wilaiwan Koedhan  (Pair)", "lead": "Direct Material Planner", "tag": "Purchasing", "metrics": []}]}, {"name": "Rahul Vishwakarma  (Rahul)", "lead": "Engineering Manager", "tag": "Engineer", "metrics": [{"v": 9, "l": "Direct reports"}, {"v": 10, "l": "Team size"}], "children": [{"name": "Kittidara Malaikul  (Nu)", "lead": "Design Engineer", "tag": "Engineer", "metrics": []}, {"name": "Maneerat Rakcheep  (Tea)", "lead": "NPD Engineer", "tag": "Engineer", "metrics": []}, {"name": "Nipon Khantikij  (Taa)", "lead": "Senior Sales Engineer", "tag": "Engineer", "metrics": []}, {"name": "Patipan Sangseerat  (Aum)", "lead": "Design Engineer", "tag": "Engineer", "metrics": []}, {"name": "Pongsak Thongdaeng  (Per)", "lead": "Sales Engineer", "tag": "Engineer", "metrics": []}, {"name": "Pradit Jaiyayong  (Dit)", "lead": "Senior Design Engineer", "tag": "Engineer", "metrics": []}, {"name": "Sunanya Bueadkhunthod  (Ying)", "lead": "BOM Engineer", "tag": "Engineer", "metrics": []}, {"name": "Watcharapong Buranroob  (Man)", "lead": "Design Engineer", "tag": "Engineer", "metrics": []}, {"name": "Yutthapong Laonin  (Aod)", "lead": "Design Engineer", "tag": "Engineer", "metrics": []}]}, {"name": "Chaiyanan Singson  (Phat)", "lead": "HR Manager", "tag": "HR", "metrics": [{"v": 5, "l": "Direct reports"}, {"v": 6, "l": "Team size"}], "children": [{"name": "Paveena Maneejak  (Fah)", "lead": "Safety Admin", "tag": "HR", "metrics": []}, {"name": "Prattana Yuchamnean  (Jeab)", "lead": "Safety Officer", "tag": "HR", "metrics": []}, {"name": "Thanapol Phunsuknirun  (Nai)", "lead": "Driver", "tag": "Admin", "metrics": []}, {"name": "Thanawat Sae-tan  (Jane)", "lead": "Driver", "tag": "Admin", "metrics": []}, {"name": "Warunee Khajornkeattamrong  (Nack)", "lead": "HR & Admin", "tag": "HR", "metrics": []}]}, {"name": "James Alastair Nippard  (James)", "lead": "Business Development Manager", "tag": "Sales", "metrics": [{"v": 3, "l": "Direct reports"}, {"v": 4, "l": "Team size"}], "children": [{"name": "Jitapa Yosak  (Mon)", "lead": "Sale Cordinater", "tag": "Sales", "metrics": []}, {"name": "Pornphat Jiropasthanakul  (Nuan)", "lead": "Sales Manager", "tag": "Sales", "metrics": []}, {"name": "Yonradee Wirojananuwat  (Marina)", "lead": "Sale Cordinater", "tag": "Sales", "metrics": []}]}, {"name": "Pranee Boonwang  (Nee)", "lead": "Finance Manager", "tag": "FN", "metrics": [{"v": 3, "l": "Direct reports"}, {"v": 4, "l": "Team size"}], "children": [{"name": "Kornpassorn Ruengsuvan  (Kae)", "lead": "Senior Accountant", "tag": "FN", "metrics": []}, {"name": "Paweena Kingthong  (Gade)", "lead": "Account and BOI Officer", "tag": "FN", "metrics": []}, {"name": "Suchanan Pimbaotham  (Pair)", "lead": "Finance 'Intern", "tag": "FN", "metrics": []}]}, {"name": "Trin Chotiraksa  (Trin)", "lead": "Purchasing Manager", "tag": "Purchasing", "metrics": [{"v": 3, "l": "Direct reports"}, {"v": 4, "l": "Team size"}], "children": [{"name": "Amornrat Poprasan  (Ao)", "lead": "Purchasing officer", "tag": "Purchasing", "metrics": []}, {"name": "Chamaiphorn Charoensrimueang  (Frame)", "lead": "Purchasing officer", "tag": "Purchasing", "metrics": []}, {"name": "U-domdet Srivichai  (Pop)", "lead": "Supplier Quality Development Engineer", "tag": "Purchasing", "metrics": []}]}, {"name": "Nawaporn Suradech  (June)", "lead": "Executive Assistant", "tag": "Admin", "metrics": []}, {"name": "Sasipan Thanomphand  (Dae)", "lead": "Project Management Supervisor", "tag": "Sales", "metrics": []}, {"name": "Surapol Maneemetasit  (Tee)", "lead": "Continious Improvement Leader", "tag": "Admin", "metrics": []}]}, {"name": "Denmanee Sanmanee  (Den)", "lead": "Leader - Paint", "tag": "Paint", "metrics": []}], "units": [{"name": "ANCA Manufacturing Solutions (Thailand)", "lead": "Rayong, Thailand", "metrics": [{"v": 0, "l": "Direct Headcount"}, {"v": 173, "l": "Aggregated Headcount"}], "children": [{"name": "Production Support", "metrics": [{"v": 20, "l": "Direct Headcount"}, {"v": 20, "l": "Aggregated Headcount"}]}, {"name": "Non-Anca Weld", "metrics": [{"v": 20, "l": "Direct Headcount"}, {"v": 20, "l": "Aggregated Headcount"}]}, {"name": "Paint", "metrics": [{"v": 13, "l": "Direct Headcount"}, {"v": 13, "l": "Aggregated Headcount"}]}, {"name": "Assembly", "metrics": [{"v": 12, "l": "Direct Headcount"}, {"v": 12, "l": "Aggregated Headcount"}]}, {"name": "Supply Chain(Prod)", "metrics": [{"v": 11, "l": "Direct Headcount"}, {"v": 11, "l": "Aggregated Headcount"}]}, {"name": "Engineer", "metrics": [{"v": 10, "l": "Direct Headcount"}, {"v": 10, "l": "Aggregated Headcount"}]}, {"name": "Quality", "metrics": [{"v": 10, "l": "Direct Headcount"}, {"v": 10, "l": "Aggregated Headcount"}]}, {"name": "Anca Weld", "metrics": [{"v": 9, "l": "Direct Headcount"}, {"v": 9, "l": "Aggregated Headcount"}]}, {"name": "Packing", "metrics": [{"v": 8, "l": "Direct Headcount"}, {"v": 8, "l": "Aggregated Headcount"}]}, {"name": "Anca Small Tool", "metrics": [{"v": 7, "l": "Direct Headcount"}, {"v": 7, "l": "Aggregated Headcount"}]}, {"name": "Planning", "metrics": [{"v": 6, "l": "Direct Headcount"}, {"v": 6, "l": "Aggregated Headcount"}]}, {"name": "Purchasing", "metrics": [{"v": 6, "l": "Direct Headcount"}, {"v": 6, "l": "Aggregated Headcount"}]}, {"name": "Laser", "metrics": [{"v": 6, "l": "Direct Headcount"}, {"v": 6, "l": "Aggregated Headcount"}]}, {"name": "Admin", "metrics": [{"v": 5, "l": "Direct Headcount"}, {"v": 5, "l": "Aggregated Headcount"}]}, {"name": "Sales", "metrics": [{"v": 5, "l": "Direct Headcount"}, {"v": 5, "l": "Aggregated Headcount"}]}, {"name": "HR", "metrics": [{"v": 4, "l": "Direct Headcount"}, {"v": 4, "l": "Aggregated Headcount"}]}, {"name": "FN", "metrics": [{"v": 4, "l": "Direct Headcount"}, {"v": 4, "l": "Aggregated Headcount"}]}, {"name": "Fold", "metrics": [{"v": 4, "l": "Direct Headcount"}, {"v": 4, "l": "Aggregated Headcount"}]}, {"name": "Supply Chain", "metrics": [{"v": 3, "l": "Direct Headcount"}, {"v": 3, "l": "Aggregated Headcount"}]}, {"name": "Weld", "metrics": [{"v": 2, "l": "Direct Headcount"}, {"v": 2, "l": "Aggregated Headcount"}]}, {"name": "Non-Anca Small Tool", "metrics": [{"v": 2, "l": "Direct Headcount"}, {"v": 2, "l": "Aggregated Headcount"}]}, {"name": "Laser & Folding", "metrics": [{"v": 1, "l": "Direct Headcount"}, {"v": 1, "l": "Aggregated Headcount"}]}, {"name": "Laser & Folding Admin", "metrics": [{"v": 1, "l": "Direct Headcount"}, {"v": 1, "l": "Aggregated Headcount"}]}, {"name": "Assembly-Admin", "metrics": [{"v": 1, "l": "Direct Headcount"}, {"v": 1, "l": "Aggregated Headcount"}]}, {"name": "Packing Admin", "metrics": [{"v": 1, "l": "Direct Headcount"}, {"v": 1, "l": "Aggregated Headcount"}]}, {"name": "Mixing", "metrics": [{"v": 1, "l": "Direct Headcount"}, {"v": 1, "l": "Aggregated Headcount"}]}, {"name": "Assembly-Redflex", "metrics": [{"v": 1, "l": "Direct Headcount"}, {"v": 1, "l": "Aggregated Headcount"}]}]}], "meta": {"total": 173, "depts": 27, "asOf": "2026-04-28"}};
+// Photo map: key = exact person name as it appears in DB.people (e.g. "Nicholas Doyle  (Nicky)")
+// value = base64 data URI ("data:image/jpeg;base64,...."). The HRM app injects this
+// from the employee database photos; standalone users can paste entries manually.
+const PHOTOS = /*__PHOTOS_JSON__*/{}/*__END_PHOTOS_JSON__*/;
+/* { exact node name : { emp_no, nickname, dept, phone, email, manager } }
+   Injected live by the app for the profile bubble. Only non-sensitive
+   preview fields are sent here; salary/PDPA fields are NEVER placed in this
+   file — they are shown server-side on the profile page per the viewer's role. */
+const EMP_MAP = /*__EMPMAP_JSON__*/{}/*__END_EMPMAP_JSON__*/;
+
+let MODE = 'people';
+
+const fmt = n => Number(n).toLocaleString('en-US');
+const canvas = document.getElementById('canvas');
+
+function buildCard(node, depth){
+  const card=document.createElement('div');
+  card.className='node'; card.dataset.depth=Math.min(depth,4);
+  card.dataset.q=((node.name||'')+' '+(node.lead||'')+' '+(node.tag||'')).toLowerCase();
+  const photo = node.photo || PHOTOS[node.name];
+  const initials = (node.name||'?').replace(/\(.*?\)/g,'').trim().split(/\s+/).map(w=>w[0]||'').slice(0,2).join('').toUpperCase();
+  const av = (MODE==='people')
+    ? (photo ? `<img class="avatar" src="${photo}" alt="" loading="lazy">`
+             : `<div class="avatar init">${initials}</div>`)
+    : '';
+  let h=`<div class="head">${av}<div class="headtxt"><div class="name">${node.name}</div>`;
+  if(node.lead) h+=`<div class="lead">${node.lead}</div>`;
+  h+='</div></div>';
+  if(node.tag)  h+=`<div class="tag">${node.tag}</div>`;
+  if(node.metrics&&node.metrics.length){
+    h+='<div class="metrics">';
+    node.metrics.forEach((m,i)=>h+=`<div class="metric ${i===1?'m1':''}"><span class="k"></span><b>${fmt(m.v)}</b><span>${m.l}</span></div>`);
+    h+='</div>';
+  }
+  card.innerHTML=h;
+  // store identity for the profile bubble
+  card.dataset.name = node.name || '';
+  card.dataset.role = node.lead || '';
+  card.dataset.tag  = node.tag  || '';
+  if(MODE==='people'){
+    card.addEventListener('click',e=>{
+      if(e.target.closest('.toggle')) return;   // toggle handled separately
+      openProfile(node);
+    });
+  }
+  if(node.children&&node.children.length){
+    const t=document.createElement('button'); t.className='toggle';
+    t.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg>`;
+    t.onclick=e=>{e.stopPropagation();card.closest('li').classList.toggle('collapsed');};
+    card.appendChild(t);
+  }
+  return card;
+}
+function renderNode(node,depth){
+  const li=document.createElement('li');
+  li.appendChild(buildCard(node,depth));
+  if(node.children&&node.children.length){
+    const ul=document.createElement('ul');
+    // VERTICAL stacking when a manager has many direct reports: a long
+    // horizontal row runs off-screen, so list them downward instead.
+    const STACK_THRESHOLD = 6;
+    const leafHeavy = node.children.filter(c=>!(c.children&&c.children.length)).length;
+    if(node.children.length >= STACK_THRESHOLD && leafHeavy >= STACK_THRESHOLD){
+      ul.classList.add('stack');
+    }
+    node.children.forEach(c=>ul.appendChild(renderNode(c,depth+1)));
+    li.appendChild(ul);
+    if(depth>=1 && MODE==='people') li.classList.add('collapsed'); // start tidy
+  }
+  return li;
+}
+function renderTree(root){
+  const tree=document.createElement('div');tree.className='tree';
+  const ul=document.createElement('ul');ul.appendChild(renderNode(root,0));tree.appendChild(ul);
+  return tree;
+}
+function countNodes(n){return 1+(n.children||[]).reduce((s,c)=>s+countNodes(c),0);}
+function draw(){
+  canvas.innerHTML='';
+  const forest=document.createElement('div');forest.className='forest';
+  const data=DB[MODE];
+  data.forEach(r=>forest.appendChild(renderTree(r)));
+  canvas.appendChild(forest);
+  if(MODE==='people'){
+    const total=data.reduce((s,r)=>s+countNodes(r),0);
+    set('s1',total,'people','l1');set('s2',DB.meta.depts,'departments','l2');set('s3',data.length,'reporting roots','l3');
+  }else{
+    set('s1',DB.meta.total,'total headcount','l1');set('s2',DB.meta.depts,'departments','l2');set('s3',1,'site','l3');
+  }
+}
+function set(id,v,lab,lid){document.getElementById(id).textContent=fmt(v);document.getElementById(lid).textContent=lab;}
+
+/* pan & zoom */
+const vp=document.getElementById('viewport');
+let scale=1,tx=60,ty=30,panning=false,sx=0,sy=0;
+function apply(){canvas.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;document.getElementById('zoomLevel').textContent=Math.round(scale*100)+'%';}
+function zoomTo(n,cx,cy){n=Math.min(2.2,Math.max(0.2,n));const r=vp.getBoundingClientRect();cx=cx??r.width/2;cy=cy??r.height/2;tx=cx-(cx-tx)*(n/scale);ty=cy-(cy-ty)*(n/scale);scale=n;apply();}
+document.getElementById('zoomIn').onclick=()=>zoomTo(scale*1.2);
+document.getElementById('zoomOut').onclick=()=>zoomTo(scale/1.2);
+document.getElementById('reset').onclick=()=>{scale=1;tx=60;ty=30;apply();};
+function fit(){const inner=canvas.firstChild;if(!inner)return;const cw=inner.scrollWidth,ch=inner.scrollHeight,r=vp.getBoundingClientRect(),pad=70;scale=Math.max(Math.min((r.width-pad)/cw,(r.height-pad)/ch,1.3),0.2);tx=(r.width-cw*scale)/2;ty=Math.max((r.height-ch*scale)/2,30);apply();}
+document.getElementById('fit').onclick=fit;
+vp.addEventListener('wheel',e=>{if(e.ctrlKey||e.metaKey){e.preventDefault();zoomTo(scale*(e.deltaY<0?1.1:.9),e.offsetX,e.offsetY);}else{e.preventDefault();tx-=e.deltaX;ty-=e.deltaY;apply();}},{passive:false});
+vp.addEventListener('mousedown',e=>{if(e.target.closest('button'))return;panning=true;sx=e.clientX-tx;sy=e.clientY-ty;vp.classList.add('grabbing');});
+window.addEventListener('mousemove',e=>{if(panning){tx=e.clientX-sx;ty=e.clientY-sy;apply();}});
+window.addEventListener('mouseup',()=>{panning=false;vp.classList.remove('grabbing');});
+let pinch=null;
+vp.addEventListener('touchstart',e=>{if(e.touches.length===1){panning=true;sx=e.touches[0].clientX-tx;sy=e.touches[0].clientY-ty;}else if(e.touches.length===2){panning=false;pinch=dist(e);}},{passive:true});
+vp.addEventListener('touchmove',e=>{if(e.touches.length===1&&panning){tx=e.touches[0].clientX-sx;ty=e.touches[0].clientY-sy;apply();}else if(e.touches.length===2&&pinch){const d=dist(e);zoomTo(scale*(d/pinch));pinch=d;}},{passive:true});
+vp.addEventListener('touchend',()=>{panning=false;pinch=null;});
+function dist(e){const a=e.touches[0],b=e.touches[1];return Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);}
+
+document.getElementById('expandAll').onclick=()=>canvas.querySelectorAll('li.collapsed').forEach(li=>li.classList.remove('collapsed'));
+document.getElementById('collapseAll').onclick=()=>canvas.querySelectorAll('.tree>ul>li>ul li').forEach(li=>{if(li.querySelector(':scope>ul'))li.classList.add('collapsed');});
+
+const search=document.getElementById('search');
+search.addEventListener('input',()=>{
+  const q=search.value.trim().toLowerCase();
+  const cards=canvas.querySelectorAll('.node');
+  if(!q){cards.forEach(c=>c.classList.remove('match','dim'));return;}
+  let first=null;
+  cards.forEach(c=>{const hit=c.dataset.q.includes(q);c.classList.toggle('match',hit);c.classList.toggle('dim',!hit);if(hit){if(!first)first=c;let li=c.closest('li');while(li){li.classList.remove('collapsed');li=li.parentElement.closest('li');}}});
+  if(first){const r=vp.getBoundingClientRect(),cr=first.getBoundingClientRect();tx+=r.width/2-(cr.left+cr.width/2);ty+=r.height/2-(cr.top+cr.height/2);apply();}
+});
+
+document.getElementById('viewSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('#viewSeg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+  MODE=b.dataset.view;
+  document.getElementById('subtitle').textContent=MODE==='people'?'Reporting Lines':'Business Units';
+  search.value='';draw();scale=1;tx=60;ty=30;setTimeout(fit,40);
+});
+
+
+draw();
+window.addEventListener('load',()=>setTimeout(fit,80));
+window.addEventListener('resize',()=>fit());
+</script>
+<div class="pop-backdrop" id="popBackdrop">
+  <div class="pop" id="pop" onclick="event.stopPropagation()"></div>
+</div>
+<script>
+/* ---- Profile bubble ---------------------------------------------------
+   Shows a quick preview from EMP_MAP (safe fields only). "View full
+   profile" sends a message to the Streamlit app, which opens that person's
+   profile page with role-based gating (salary/PDPA only for super admin). */
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function openProfile(node){
+  const info = EMP_MAP[node.name] || {};
+  const photo = node.photo || PHOTOS[node.name];
+  const initials=(node.name||'?').replace(/\(.*?\)/g,'').trim().split(/\s+/).map(w=>w[0]||'').slice(0,2).join('').toUpperCase();
+  const av = photo ? `<img class="av" src="${photo}" alt="">`
+                   : `<div class="av init">${initials}</div>`;
+  const row=(lb,vl)=> vl ? `<div class="row"><div class="lb">${lb}</div><div class="vl">${esc(vl)}</div></div>` : '';
+  const pop=document.getElementById('pop');
+  pop.innerHTML =
+    `<div class="ph">${av}<div><div class="nm">${esc(node.name)}</div>`+
+    `<div class="ro">${esc(node.lead||'')}</div></div></div>`+
+    `<div class="bd">`+
+      row('ชื่อเล่น / Nick', info.nickname)+
+      row('รหัส / Emp No.', info.emp_no)+
+      row('แผนก / Dept', info.dept || node.tag)+
+      row('โทร / Phone', info.phone)+
+      row('อีเมล / Email', info.email)+
+      row('ผู้บังคับบัญชา / Manager', info.manager)+
+    `</div>`+
+    (info.emp_no
+      ? `<div class="ft"><button class="more" onclick="viewFull('${esc(info.emp_no)}')">เปิดโปรไฟล์เต็ม / View full profile</button>`+
+        `<button class="close" onclick="closeProfile()">ปิด / Close</button></div>`
+      : `<div class="ft"><button class="close" onclick="closeProfile()" style="flex:1">ปิด / Close</button></div>`+
+        `<div class="hint">ไม่พบรหัสพนักงานสำหรับผู้นี้ในระบบ / No employee record linked — open the app's Employee Data to view full details.</div>`);
+  document.getElementById('popBackdrop').classList.add('on');
+}
+function closeProfile(){document.getElementById('popBackdrop').classList.remove('on');}
+function viewFull(empNo){
+  // Streamlit sandboxes this iframe, so direct navigation is blocked.
+  // Copy the Emp. No. and point the user at the in-app profile opener
+  // that sits right above the chart (server-side + role-gated).
+  try{ navigator.clipboard.writeText(empNo); }catch(e){}
+  var pop=document.getElementById('pop');
+  var note=document.createElement('div');
+  note.className='hint';
+  note.style.cssText='background:#eef6ff;border-top:1px solid #d6e7fb;padding:10px 20px 12px;margin:0;font-size:12px;color:#1d4e7a';
+  note.innerHTML='📋 คัดลอกรหัส <b>'+esc(empNo)+'</b> แล้ว — วางในช่อง '+
+    '"เปิดโปรไฟล์พนักงาน" <b>ด้านบนผังนี้</b> เพื่อดูโปรไฟล์เต็ม<br>'+
+    'Copied <b>'+esc(empNo)+'</b> — paste it in the "Open staff profile" box '+
+    '<b>above this chart</b> to view the full profile.';
+  var old=pop.querySelector('.hint'); if(old) old.remove();
+  pop.appendChild(note);
+}
+document.getElementById('popBackdrop').addEventListener('click',closeProfile);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeProfile();});
+</script>
+</body>
+</html>

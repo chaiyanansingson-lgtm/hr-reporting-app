@@ -1,0 +1,155 @@
+<!doctype html>
+<!-- ===========================================================================
+  AMS Car Booking — Leaflet/OpenStreetMap page (ZERO key, ZERO billing)
+  Embedded by pages/G_Car_Booking.py, which replaces __APPS_SCRIPT_URL__
+  with your deployed Apps Script /exec URL from secrets.
+  Map: OpenStreetMap • Route: OSRM public server (straight-line fallback)
+  Search: Nominatim • Backend: apps_script/Code.gs -> Jira AHA + LINE
+============================================================================ -->
+<html lang="th">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+ :root{--blue:#009ADE;--purple:#715091;--magenta:#E31D93;--bd:#e4e8f0}
+ body{margin:0;font-family:"Hanken Grotesk","Noto Sans Thai",system-ui,sans-serif;background:#f4f6fb;color:#2b2f3a}
+ .wrap{display:grid;grid-template-columns:380px 1fr;gap:14px;padding:14px;height:96vh;box-sizing:border-box}
+ @media(max-width:860px){.wrap{grid-template-columns:1fr;height:auto}}
+ .panel{background:#fff;border:1px solid var(--bd);border-radius:14px;padding:16px;overflow:auto}
+ h2{margin:0 0 10px;font-size:17px}
+ label{display:block;font-size:12.5px;font-weight:600;margin:10px 0 4px;color:#555}
+ input,select,textarea{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--bd);border-radius:9px;font-family:inherit;font-size:13.5px}
+ .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+ .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+ .chip{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:20px;border:1px solid var(--bd);background:#fff;cursor:pointer}
+ .chip:hover{border-color:var(--blue);color:var(--blue)}
+ button.go{width:100%;margin-top:14px;padding:12px;border:0;border-radius:10px;color:#fff;font-weight:700;font-size:14.5px;cursor:pointer;background:linear-gradient(135deg,var(--blue),var(--purple))}
+ #map{border-radius:14px;border:1px solid var(--bd);min-height:520px}
+ .stat{font-size:12.5px;color:#555;margin-top:8px}
+ .ok{background:#e8f7ee;border:1px solid #bce5cb;color:#14532d;padding:10px;border-radius:9px;margin-top:10px;font-size:13px;display:none}
+ .err{background:#fdecec;border:1px solid #f5c2c2;color:#7f1d1d;padding:10px;border-radius:9px;margin-top:10px;font-size:13px;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <div class="panel">
+  <h2>🚗 จองรถบริษัท / Book a company car</h2>
+  <div class="row">
+   <div><label>รหัสพนักงาน / Staff ID *</label><input id="staffId" placeholder="1021xxx"></div>
+   <div><label>ชื่อ / Name *</label><input id="staffName"></div>
+  </div>
+  <div class="row">
+   <div><label>แผนก / Department</label><input id="dept"></div>
+   <div><label>ความเร่งด่วน / Priority</label>
+    <select id="priority"><option>Normal</option><option>Urgent</option></select></div>
+  </div>
+  <label>วัตถุประสงค์ / Purpose *</label><input id="purpose">
+  <div class="row">
+   <div><label>วันที่ / Date *</label><input id="date" type="date"></div>
+   <div><label>ผู้โดยสาร / Passengers</label><input id="pax" type="number" min="1" value="1"></div>
+  </div>
+  <div class="row">
+   <div><label>เวลาออก / Start *</label><input id="start" type="time" value="09:00"></div>
+   <div><label>เวลากลับ / End *</label><input id="end" type="time" value="17:00"></div>
+  </div>
+  <label>จุดรับ / Pickup (คลิกแผนที่ครั้งที่ 1)</label><input id="pickup" placeholder="AMS Pluak Daeng">
+  <label>ปลายทาง / Destination (คลิกแผนที่ครั้งที่ 2)</label><input id="dest" placeholder="ค้นหาหรือคลิกแผนที่">
+  <div class="chips" id="chips">
+   <span class="chip" data-q="ANCA Manufacturing Solutions Pluak Daeng">🏭 AMS</span>
+   <span class="chip" data-q="Map Ta Phut Industrial Estate">Map Ta Phut</span>
+   <span class="chip" data-q="U-Tapao Airport">U-Tapao ✈️</span>
+   <span class="chip" data-q="Suvarnabhumi Airport">Suvarnabhumi ✈️</span>
+   <span class="chip" data-q="Eastern Seaboard Industrial Estate Rayong">ESIE</span>
+   <span class="chip" data-q="Amata City Rayong">Amata City</span>
+   <span class="chip" data-q="Laem Chabang Port">Laem Chabang</span>
+  </div>
+  <div class="stat" id="routeStat">ระยะทาง / Distance: —</div>
+  <button class="go" id="submit">📨 ส่งคำขอจอง / Submit booking</button>
+  <div class="ok" id="okBox"></div>
+  <div class="err" id="errBox"></div>
+ </div>
+ <div id="map"></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const HUB = "__APPS_SCRIPT_URL__";          // injected by G_Car_Booking.py
+const AMS = [12.9685, 101.2270];            // Pluak Daeng, Rayong
+const map = L.map('map').setView(AMS, 11);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution:'© OpenStreetMap'}).addTo(map);
+let pick=null, dest=null, pickM=null, destM=null, routeL=null, km=0;
+
+function setPoint(latlng, isPick, label){
+  if(isPick){ pick=latlng; if(pickM)map.removeLayer(pickM);
+    pickM=L.marker(latlng).addTo(map).bindPopup('Pickup').openPopup();
+    if(label)document.getElementById('pickup').value=label;
+  } else { dest=latlng; if(destM)map.removeLayer(destM);
+    destM=L.marker(latlng).addTo(map).bindPopup('Destination').openPopup();
+    if(label)document.getElementById('dest').value=label; }
+  route();
+}
+map.on('click', e=>{
+  if(!pick) setPoint(e.latlng,true,`${e.latlng.lat.toFixed(5)},${e.latlng.lng.toFixed(5)}`);
+  else setPoint(e.latlng,false,`${e.latlng.lat.toFixed(5)},${e.latlng.lng.toFixed(5)}`);
+});
+async function route(){
+  if(!pick||!dest) return;
+  if(routeL) map.removeLayer(routeL);
+  try{
+    const u=`https://router.project-osrm.org/route/v1/driving/${pick.lng},${pick.lat};${dest.lng},${dest.lat}?overview=full&geometries=geojson`;
+    const r=await fetch(u); const j=await r.json();
+    const route=j.routes[0];
+    km=(route.distance/1000);
+    routeL=L.geoJSON(route.geometry,{style:{color:'#715091',weight:5,opacity:.85}}).addTo(map);
+    map.fitBounds(routeL.getBounds(),{padding:[30,30]});
+  }catch(e){ // straight-line fallback
+    routeL=L.polyline([pick,dest],{color:'#715091',dashArray:'6 6'}).addTo(map);
+    km=map.distance(pick,dest)/1000;
+  }
+  document.getElementById('routeStat').textContent =
+    `ระยะทาง / Distance: ~${km.toFixed(1)} km (ไป-กลับ ~${(km*2).toFixed(1)} km)`;
+}
+async function geocode(q, isPick){
+  const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`);
+  const j=await r.json();
+  if(j[0]) setPoint(L.latLng(+j[0].lat,+j[0].lon), isPick, q);
+}
+document.getElementById('chips').addEventListener('click',e=>{
+  const c=e.target.closest('.chip'); if(!c)return;
+  geocode(c.dataset.q, !pick ? true : false);
+});
+document.getElementById('pickup').addEventListener('change',e=>geocode(e.target.value,true));
+document.getElementById('dest').addEventListener('change',e=>geocode(e.target.value,false));
+// default pickup = AMS
+setPoint(L.latLng(...AMS), true, 'AMS Pluak Daeng');
+
+document.getElementById('submit').onclick = async ()=>{
+  const g=id=>document.getElementById(id).value.trim();
+  const ok=document.getElementById('okBox'), err=document.getElementById('errBox');
+  ok.style.display=err.style.display='none';
+  if(!g('staffId')||!g('staffName')||!g('purpose')||!g('date')||!dest){
+    err.textContent='กรุณากรอกข้อมูลที่มี * และเลือกปลายทาง / Fill required fields and pick a destination.';
+    err.style.display='block'; return;
+  }
+  const payload={action:'book', staffId:g('staffId'), staffName:g('staffName'),
+    department:g('dept'), purpose:g('purpose'), priority:g('priority'),
+    date:g('date'), start:g('start'), end:g('end'), passengers:g('pax'),
+    pickup:g('pickup'), dest:g('dest'),
+    pickLatLng:pick?`${pick.lat.toFixed(6)},${pick.lng.toFixed(6)}`:'',
+    destLatLng:dest?`${dest.lat.toFixed(6)},${dest.lng.toFixed(6)}`:'',
+    km:+(km*2).toFixed(1)};
+  try{
+    const r=await fetch(HUB,{method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},  // avoids CORS preflight on Apps Script
+      body:JSON.stringify(payload)});
+    const j=await r.json();
+    if(j.ok){ ok.innerHTML=`✅ จองสำเร็จ / Booked — Jira <b>${j.key}</b> (สถานะ Request). คนขับจะได้รับแจ้งทาง LINE เมื่อแอดมิน Confirm`;
+      ok.style.display='block'; }
+    else throw new Error(j.error||'unknown');
+  }catch(e){
+    err.textContent='ส่งไม่สำเร็จ / Failed: '+e.message+' — ตรวจสอบว่า Apps Script deploy เป็น "Anyone" แล้ว';
+    err.style.display='block';
+  }
+};
+</script>
+</body></html>

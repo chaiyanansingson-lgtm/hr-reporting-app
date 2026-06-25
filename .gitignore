@@ -1,32 +1,25 @@
-# Python
+# ── secrets — NEVER commit (real values live in Streamlit Cloud → Secrets) ──
+.streamlit/secrets.toml
+secrets.toml
+.env
+*.env
+
+# ── local SQLite database (HR data; production uses Supabase Postgres) ──
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# ── python ──
 __pycache__/
 *.py[cod]
-*$py.class
-*.egg-info/
-.pytest_cache/
-.venv/
-venv/
-env/
+*.bak
 
-# Database (do NOT commit production data)
-data/hr.db
-data/*.db
-data/*.sqlite
-
-# Auth (contains password hashes & cookie secret -- do NOT commit)
-config/auth.yaml
-
-# Streamlit secrets
-.streamlit/secrets.toml
-
-# OS
+# ── OS / editor noise ──
 .DS_Store
 Thumbs.db
-
-# IDE
 .vscode/
 .idea/
-*.swp
 
-# Logs
-*.log
+# NOTE: .streamlit/secrets.toml.example IS committed (it is a template with no
+# real values). .streamlit/config.toml IS committed (theme, no secrets).

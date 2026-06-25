@@ -1,13 +1,11 @@
-streamlit>=1.32.0
-streamlit-authenticator>=0.3.2
-pandas>=2.1.0
-openpyxl>=3.1.2
-xlrd>=2.0.1
-xlsxwriter>=3.1.9
-plotly>=5.18.0
-kaleido==0.2.1
-sqlalchemy>=2.0.25
-bcrypt>=4.1.0
-pyyaml>=6.0.1
-matplotlib>=3.8.0
-pillow>=10.0.0
+streamlit>=1.36
+openpyxl
+Pillow
+psycopg2-binary     # Supabase Postgres
+weasyprint          # optional: PDF printing of FM-HR-003 / สปส.1-03 / ล.ย.01
+xlrd>=2.0
+plotly
+pypdf
+reportlab
+pymupdf
+matplotlib>=3.7

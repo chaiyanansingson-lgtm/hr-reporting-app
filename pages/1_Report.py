@@ -1,348 +1,389 @@
-"""
-📊 Report page - the main HR report.
-Renders the same table shape as the user's screenshot, with filters, unit toggle,
-optional Annual Leave columns, and Excel/PNG download buttons.
-"""
+# pages/1_Report.py — WORKING HOUR REPORT (rebuilt on the real face-scan
+# timesheet via timesheet_db). Full-width, branded table; leave-type
+# selection; month filter; Permanent/Contract & OT-rate column toggles.
+import io
+import datetime as dt
+import calendar
 import streamlit as st
-import pandas as pd
-import sys
-from pathlib import Path
+st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+from lib import theme as _theme
+from lib.auth import require_capability, has_capability, current_user
+from lib import timesheet_db as ts
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+_theme.inject()
+require_capability("report.view")
+user = current_user()
+view_all = has_capability("report.view_all")
 
-from lib import db, calculations as calc, exports
-from lib.page_utils import require_login, page_header
+_theme.header("รายงานชั่วโมงทำงาน", "Working Hour Report",
+              "กำลังคน • ชั่วโมงทำงาน • OT ตามอัตรา • การลาแยกประเภท ตามกลุ่ม/หน้าที่")
 
-st.set_page_config(page_title="Report", page_icon="📊", layout="wide")
-require_login(capability="report.access")
-page_header(title_key="report_title", subtitle_key="report_subtitle")
-
-# ---------- filters ----------
-periods = db.list_periods()
-if not periods:
-    st.warning(
-        "No data loaded yet. An admin needs to upload a Timesheet on the **📤 Upload Data** page first."
-    )
+# ───────────────────────── timesheet source (admin-managed) ────────────
+up = ts.latest_upload()
+if not up:
+    st.info("ยังไม่มีข้อมูลบันทึกเวลา — ผู้ดูแลระบบอัปโหลดไฟล์ได้ที่ "
+            "**ผู้ดูแลระบบ → ข้อมูล & อัปโหลด** · No timesheet yet; an admin "
+            "uploads it in **Admin → Data & Uploads**.")
     st.stop()
 
-cgs = db.list_cost_groups()
-unique_top = sorted({c["sg_a_manu"] for c in cgs if c["sg_a_manu"]})
-unique_dept = sorted({c["department"] for c in cgs if c["department"]})
+# ───────────────────────── settings (collapsible) ──────────────────────
+df_from = dt.date.fromisoformat(up["date_from"]) if up["date_from"] else None
+df_to = dt.date.fromisoformat(up["date_to"]) if up["date_to"] else None
+months = ts.months(up["id"])
+with st.expander("⚙️ ตั้งค่ารายงาน · Report settings", expanded=False):
+    c1, c2 = st.columns(2)
+    month = c1.selectbox("เดือน · Month", ["(ทุกเดือน · all months)"] + months)
+    density = c2.radio("ความหนาแน่น · Density",
+                       ["ปกติ · Normal", "กระชับ · Compact"], horizontal=True)
+    _adv = st.toggle(
+        "⚙️ ตั้งชั่วโมงมาตรฐานแยกรายวัน/ประเภท (ขั้นสูง) · per-weekday & "
+        "per-type standard hours", value=False)
+    weekday_hours = None
+    type_hours = None
+    if not _adv:
+        std_day_hours = st.number_input(
+            "⏱️ ชั่วโมงทำงานมาตรฐานต่อวัน · Standard hours per working day "
+            "(ใช้แปลงวันลา/ขาดงาน → ชั่วโมง · converts leave/absence days → "
+            "hours)", min_value=1.0, max_value=24.0, value=8.0, step=0.5)
+    else:
+        std_day_hours = 8.0
+        st.caption("ชั่วโมงมาตรฐานของแต่ละวันในสัปดาห์ (เช่น เสาร์ครึ่งวัน) — "
+                   "วันลา/ขาดงานของวันใดจะถูกแปลงเป็นชั่วโมงตามมาตรฐานวันนั้น · "
+                   "standard hours per weekday; each leave/absence day converts "
+                   "using that weekday's standard.")
+        _wd = st.columns(7)
+        _wl = ["จ·Mon", "อ·Tue", "พ·Wed", "พฤ·Thu", "ศ·Fri", "ส·Sat", "อา·Sun"]
+        weekday_hours = {}
+        for _i, _lab in enumerate(_wl):
+            weekday_hours[_i] = _wd[_i].number_input(
+                _lab, 0.0, 24.0, 8.0 if _i < 5 else 0.0, 0.5, key=f"wh{_i}")
+        st.caption("override รายประเภท (>0 = บังคับชั่วโมงนั้นสำหรับประเภทนั้น "
+                   "ทุกวัน, 0 = ใช้มาตรฐานรายวันด้านบน) · per-type override "
+                   "(>0 forces that many hours/day for that type; 0 = use the "
+                   "weekday standard above).")
+        _tc = st.columns(4)
+        type_hours = {}
+        for _col, _t, _lab in ((_tc[0], "absent", "ขาดงาน·Absent"),
+                               (_tc[1], "sick", "ลาป่วย·Sick"),
+                               (_tc[2], "personal", "ลากิจ·Personal"),
+                               (_tc[3], "annual", "ลาพักร้อน·Annual")):
+            _v = _col.number_input(_lab, 0.0, 24.0, 0.0, 0.5, key=f"th_{_t}")
+            if _v > 0:
+                type_hours[_t] = _v
+    st.markdown("**นับวันลาประเภทใดเป็น 'การขาดงาน' · count which leave types "
+                "as absence**")
+    st.caption("ไฟล์บันทึกเวลาจับ 4 ประเภทนี้ — เลือกได้ว่าให้ประเภทใดรวมในอัตราขาด"
+               "งาน (ลาพักร้อนยังแสดงแยกเป็นคอลัมน์ AL เสมอ) · the timesheet "
+               "captures these 4 categories; tick which count toward the absence "
+               "rate (annual is also always shown separately as AL).")
+    la, lb, lc, ld = st.columns(4)
+    inc_absent = la.checkbox("ขาดงาน · No-show", value=True)
+    inc_sick = lb.checkbox("ลาป่วย · Sick", value=True)
+    inc_personal = lc.checkbox("ลากิจ · Personal", value=True)
+    inc_annual = ld.checkbox("ลาพักร้อน · Annual", value=False)
+    t1, t2 = st.columns(2)
+    show_class = t1.toggle("แยก ประจำ/ซับ · Permanent/Contract split",
+                           value=False)
+    show_ot = t2.toggle("แยกอัตรา OT · OT-rate breakdown (×1/×1.5/×2/×3)",
+                        value=True)
+    show_days = st.toggle("แสดงจำนวนวันลาแยกประเภท · show leave days by type",
+                          value=False)
 
-with st.expander("🔧 Filters & calculation settings (click to collapse for more table room)",
-                  expanded=True):
-    f1, f2, f3, f4 = st.columns([2, 1.2, 2.5, 2.5])
-    period = f1.selectbox("Reporting period", periods, index=0)
-    unit = f2.radio("Unit", ["Hours", "Days"], horizontal=True)
-    top_filter = f3.multiselect("Top group", unique_top,
-                                default=unique_top, placeholder="(all)",
-                                help="Whatever group names you've defined in Configuration → Cost Groups")
-    dept_filter = f4.multiselect("Function (department)", unique_dept,
-                                 default=[], placeholder="(all)")
+absent_types = set()
+if inc_absent:
+    absent_types.add("absent")
+if inc_sick:
+    absent_types.add("sick")
+if inc_personal:
+    absent_types.add("personal")
+if inc_annual:
+    absent_types.add("annual")
 
-    # Working-hours mode
-    wh_mode_label = st.radio(
-        "Working Hours mode",
-        ["Actual (from Timesheet)", "Standard (HC × Working Days × Daily Std Hrs)"],
-        horizontal=False,
-        help="**Actual** sums the work_hours column from the Timesheet. "
-             "**Standard** computes the expected hours: number of working days in the period "
-             "(from Holidays + per-weekday rules in Configuration) × daily standard hours × headcount.",
-    )
-    wh_mode = "actual" if wh_mode_label.startswith("Actual") else "standard"
-
-    # Deduction toggles — separate row, all per-leave-type
-    st.markdown("**Deduct from Working Hours:**")
-    d1, d2, d3, d4, d5 = st.columns(5)
-    deduct_al = d1.toggle("Annual Leave", value=False, key="ded_al",
-                           help="Subtract Annual Leave hours from Working Hours.")
-    deduct_sick = d2.toggle("Sick Leave", value=False, key="ded_sick",
-                             help="Subtract Sick Leave hours from Working Hours.")
-    deduct_business = d3.toggle("Business Leave", value=False, key="ded_bus",
-                                 help="Subtract Business Leave hours from Working Hours.")
-    deduct_without_pay = d4.toggle("Without Pay", value=False, key="ded_wp",
-                                    help="Subtract Without-Pay hours from Working Hours.")
-    include_al_in_pct = d5.toggle("Include AL in %Absent", value=False, key="inc_al",
-                                   help="Add Annual Leave hours to the Absent numerator and denominator.")
-
-    # Second filter row: column toggles
-    g1, g2 = st.columns([3, 5])
-    include_al = g1.toggle("Show Annual Leave columns", value=True,
-                           help="The red-box columns from the original screenshot")
-    leave_breakdown = g2.multiselect(
-        "Add leave-type breakdown columns",
-        ["Sick Leave", "Business Leave", "Without Pay"],
-        default=[],
-        help="Each adds Total / Permanent / Contract columns for that leave type. "
-             "These are subsets of the lumped 'Total Absent (Excl AL)' columns.",
-    )
-    include_sick = "Sick Leave" in leave_breakdown
-    include_business = "Business Leave" in leave_breakdown
-    include_without_pay = "Without Pay" in leave_breakdown
-
-# Translate dept filter -> cost code list
-cost_codes_filter = None
-if dept_filter:
-    cost_codes_filter = [c["code"] for c in cgs if c["department"] in dept_filter]
-
-# Personal-overrides toggle — when ON, calculations use this user's overrides
-# instead of (or on top of) the master settings.
-from lib.page_utils import is_admin
-me = st.session_state.get("username") or ""
-user_has_overrides = bool(me) and bool(db.list_user_overrides(me))
-
-if user_has_overrides:
-    use_personal = st.toggle(
-        f"👤 Apply my personal calculation settings to this report",
-        value=not is_admin(),  # default ON for non-admin, OFF for admin
-        help="When ON, this report uses YOUR personal Holiday / Hour-rule / "
-             "Cost-group / Period overrides. When OFF, uses the master settings. "
-             "Either way, the master DB and other users are unaffected.",
-    )
-    effective_user = me if use_personal else None
+if month.startswith("("):
+    d_from, d_to = up["date_from"], up["date_to"]
+    period_label = f"{up['date_from']} → {up['date_to']}"
 else:
-    effective_user = None
+    y, m = map(int, month.split("-"))
+    d_from = f"{y:04d}-{m:02d}-01"
+    d_to = f"{y:04d}-{m:02d}-{calendar.monthrange(y, m)[1]:02d}"
+    period_label = month
 
-# Build report
-report = calc.build_report(
-    period=period,
-    unit=unit,
-    include_annual_leave_cols=include_al,
-    cost_codes_filter=cost_codes_filter,
-    wh_mode=wh_mode,
-    deduct_al_from_wh=deduct_al,
-    deduct_sick_from_wh=deduct_sick,
-    deduct_business_from_wh=deduct_business,
-    deduct_without_pay_from_wh=deduct_without_pay,
-    include_al_in_absent_pct=include_al_in_pct,
-    username=effective_user,
-)
+rows = ts.report_rows(up["id"], date_from=d_from, date_to=d_to,
+                      absent_types=absent_types, day_hours=std_day_hours,
+                      weekday_hours=weekday_hours, type_hours=type_hours)
 
-# Show banner if personal overrides are in effect
-if effective_user:
-    summary = db.get_user_override_summary(effective_user)
-    with st.expander(
-        f"🎛️ Personal calculation settings ACTIVE — {len(summary)} difference(s) from master",
-        expanded=False,
-    ):
-        if summary:
-            st.dataframe(pd.DataFrame(summary), use_container_width=True, hide_index=True)
-        st.caption(
-            "These overrides only affect what YOU see. Manage them on the "
-            "**Settings** page (toggle to 'My Personal Settings' mode)."
-        )
+# ───────────────────────── aggregation helpers ─────────────────────────
+GROUPS = ["SG&A", "MANU Support", "MANU"]
+SUM_KEYS = ["hc", "perm_hc", "con_hc", "work", "perm_work", "con_work",
+            "absent_h", "perm_absent_h", "con_absent_h", "al_h", "perm_al_h",
+            "con_al_h", "ot1", "ot15", "ot2", "ot3", "total_ot", "sick_d",
+            "personal_d", "absent_d", "annual_d"]
 
-# If standard mode, show the resolved working days info
-if wh_mode == "standard":
-    wd = report["meta"].get("standard_work_days")
-    sh = report["meta"].get("standard_hrs_per_emp")
-    if wd is not None:
-        unit_factor = 1.0 if unit == "Hours" else 1.0 / db.get_hour_config().get("hours_per_day", 8.0)
-        st.caption(
-            f"📐 **Standard mode active** — {period} has **{wd} working days** "
-            f"× **{sh:.2f} hrs/day** = **{sh*unit_factor:.2f} {unit.lower()}/employee**. "
-            f"Adjust holidays or per-weekday hours in Configuration if these don't match your expectation."
-        )
 
-# Optional top-level filter applied client-side
-if top_filter and report["rows"]:
-    report["rows"] = [r for r in report["rows"] if r["sg_a_manu"] in top_filter]
+def _agg(rs):
+    d = {k: sum(r.get(k, 0) for r in rs) for k in SUM_KEYS}
+    base = d["work"] + d["absent_h"]
+    pbase = d["perm_work"] + d["perm_absent_h"]
+    cbase = d["con_work"] + d["con_absent_h"]
+    d["pct_absent"] = (d["absent_h"] / base * 100) if base else 0
+    d["pct_perm_absent"] = (d["perm_absent_h"] / pbase * 100) if pbase else 0
+    d["pct_con_absent"] = (d["con_absent_h"] / cbase * 100) if cbase else 0
+    d["pct_ot"] = (d["total_ot"] / d["work"] * 100) if d["work"] else 0
+    return d
 
-# ---------- rendering: build the display dataframe like the screenshot ----------
-st.markdown("---")
 
-if not report["rows"]:
-    st.info("No data matches these filters.")
-    st.stop()
+grand = _agg(rows)
 
-# ============================================================================
-# Viewing controls — density, table height, collapsible filters
-# ============================================================================
-st.markdown("---")
+# previous-month aggregate for month-over-month comparison (req. 1.5)
+grand_prev = None
+if not month.startswith("("):
+    _py, _pm = (y, m - 1) if m > 1 else (y - 1, 12)
+    _pf = f"{_py:04d}-{_pm:02d}-01"
+    _pt = f"{_py:04d}-{_pm:02d}-{calendar.monthrange(_py, _pm)[1]:02d}"
+    _prev_rows = ts.report_rows(up["id"], date_from=_pf, date_to=_pt,
+                                absent_types=absent_types,
+                                day_hours=std_day_hours,
+                                weekday_hours=weekday_hours,
+                                type_hours=type_hours)
+    if _prev_rows:
+        grand_prev = _agg(_prev_rows)
 
-with st.container():
-    v1, v2, v3, v4 = st.columns([2, 2, 3, 1.2])
-    density = v1.radio(
-        "📐 Density",
-        ["Compact", "Normal", "Spacious"], index=1, horizontal=True,
-        help="Affects row height and font size of the report table below."
-    )
-    table_height = v2.slider(
-        "📏 Table height (px)", min_value=300, max_value=1400, value=700, step=50,
-        help="Drag to make the table shorter or taller."
-    )
-    v3.caption(
-        "💡 **Tip:** hover over the top-right of the table to reveal Streamlit's built-in "
-        "**search**, **download CSV**, and **fullscreen** buttons. "
-        "You can also press **Ctrl + +** / **Ctrl + −** to zoom the whole page."
-    )
-    full_width = v4.toggle("🔍 Full width", value=False,
-                            help="Hide the sidebar to give the table the entire screen width.")
+# ───────────────────────── summary cards (TOP) ─────────────────────────
+st.caption(f"ช่วงข้อมูล · Period: **{period_label}** • "
+           f"นับขาดงานจาก · absence from: "
+           f"{', '.join(sorted(absent_types)) or '—'} • ลาพักร้อนแยกต่างหาก")
+def _d(key, fmt="{:+,.0f}"):
+    """Month-over-month delta string, or None when no prior month."""
+    if grand_prev is None:
+        return None
+    return fmt.format(grand[key] - grand_prev[key]) + " vs prev mo"
 
-# CSS for density + optional sidebar collapse
-density_css = {
-    "Compact":   {"font_size": "0.78rem", "row_height": "26px"},
-    "Normal":    {"font_size": "0.88rem", "row_height": "32px"},
-    "Spacious":  {"font_size": "0.98rem", "row_height": "40px"},
-}[density]
-extra_css = f"""
+
+_VS = " vs prev mo"
+m = st.columns(6)
+m[0].metric("กำลังคน · Headcount", f"{int(grand['hc']):,}",
+            _d("hc"), delta_color="off")
+m[1].metric("ชม.ทำงาน · Working (hrs)", f"{grand['work']:,.0f}",
+            _d("work"), delta_color="off")
+m[2].metric(f"ขาดงาน · Absent — {grand['pct_absent']:.2f}%",
+            f"{grand['absent_h']:,.0f} ชม.",
+            (f"{grand['pct_absent'] - grand_prev['pct_absent']:+.2f} pp{_VS}"
+             if grand_prev else None), delta_color="inverse")
+m[3].metric(f"OT รวม · OT total — {grand['pct_ot']:.1f}%",
+            f"{grand['total_ot']:,.0f} ชม.",
+            (f"{grand['pct_ot'] - grand_prev['pct_ot']:+.1f} pp{_VS}"
+             if grand_prev else None), delta_color="inverse")
+m[4].metric("ลาพักร้อน · Annual leave (hrs)", f"{grand['al_h']:,.0f}",
+            _d("al_h"), delta_color="off")
+_sp = grand["sick_d"] + grand["personal_d"]
+m[5].metric("ลาป่วย+ลากิจ · Sick+Personal (days)", f"{_sp:,.0f}",
+            (f"{_sp - (grand_prev['sick_d'] + grand_prev['personal_d']):+,.0f}"
+             f"{_VS}" if grand_prev else None), delta_color="inverse")
+if grand_prev is None and not month.startswith("("):
+    st.caption("ℹ️ ไม่มีข้อมูลเดือนก่อนหน้าสำหรับเปรียบเทียบ · no prior-month "
+               "data to compare against.")
+
+# ───────────────────────── column spec ─────────────────────────────────
+# (key, header_th, header_en, kind)  kind: lbl | int | hr | pct
+COLS = [("group", "กลุ่ม", "Group", "lbl"),
+        ("function", "หน้าที่", "Function", "lbl"),
+        ("hc", "HC รวม", "Total HC", "int")]
+if show_class:
+    COLS += [("perm_hc", "ประจำ", "Perm HC", "int"),
+             ("con_hc", "ซับ", "Contract HC", "int")]
+COLS += [("work", "ชม.ทำงาน", "Working Hrs", "hr")]
+if show_class:
+    COLS += [("perm_work", "ทำงาน(ประจำ)", "Perm Working", "hr"),
+             ("con_work", "ทำงาน(ซับ)", "Contract Working", "hr")]
+COLS += [("absent_h", "ขาดงาน(ชม.)", "Absent Hrs", "hr")]
+if show_class:
+    COLS += [("perm_absent_h", "ขาด(ประจำ)", "Perm Absent", "hr"),
+             ("con_absent_h", "ขาด(ซับ)", "Contract Absent", "hr")]
+COLS += [("pct_absent", "% ขาด", "% Absent", "pct")]
+if show_class:
+    COLS += [("pct_perm_absent", "% ขาด(ประจำ)", "% Perm Absent", "pct"),
+             ("pct_con_absent", "% ขาด(ซับ)", "% Contract Absent", "pct")]
+if show_days:
+    COLS += [("sick_d", "ลาป่วย(วัน)", "Sick(d)", "hr"),
+             ("personal_d", "ลากิจ(วัน)", "Personal(d)", "hr"),
+             ("absent_d", "ขาด(วัน)", "No-show(d)", "hr")]
+if show_ot:
+    COLS += [("ot1", "OT×1", "OT×1", "hr"), ("ot15", "OT×1.5", "OT×1.5", "hr"),
+             ("ot2", "OT×2", "OT×2", "hr"), ("ot3", "OT×3", "OT×3", "hr")]
+COLS += [("total_ot", "OT รวม", "Total OT", "hr"),
+         ("pct_ot", "% OT", "% OT", "pct"),
+         ("al_h", "ลาพักร้อน(ชม.)", "AL Hrs", "hr")]
+if show_class:
+    COLS += [("perm_al_h", "AL(ประจำ)", "Perm AL", "hr"),
+             ("con_al_h", "AL(ซับ)", "Contract AL", "hr")]
+
+_lang = _theme.i18n.cur_lang()
+NUMK = {"int", "hr", "pct"}
+
+
+def _fmt(v, kind):
+    if kind == "int":
+        return f"{int(round(v)):,}"
+    if kind == "hr":
+        return f"{v:,.1f}"
+    if kind == "pct":
+        return f"{v:.2f}%"
+    return str(v)
+
+
+# ───────────────────────── build full-width HTML table ─────────────────
+GROUP_ACCENT = {"SG&A": "#009ADE", "MANU Support": "#715091", "MANU": "#E31D93"}
+
+
+def _cell(val, kind, cls=""):
+    align = "right" if kind in NUMK else "left"
+    return f'<td class="{cls}" style="text-align:{align}">{val}</td>'
+
+
+def _row_html(r, accent, cls="", show_group=True):
+    tds = []
+    for k, _th, _en, kind in COLS:
+        if k == "group":
+            v = r.get("group", "") if show_group else ""
+            tds.append(f'<td class="{cls} grpcell" style="border-left:4px '
+                       f'solid {accent}">{v}</td>')
+        elif k == "function":
+            tds.append(f'<td class="{cls}" style="text-align:left">'
+                       f'<b>{r.get("function","")}</b></td>')
+        else:
+            tds.append(_cell(_fmt(r.get(k, 0), kind), kind, cls))
+    return "<tr>" + "".join(tds) + "</tr>"
+
+
+head = "".join(f'<th style="text-align:{"right" if kind in NUMK else "left"}">'
+               f'{(_th if _lang=="th" else _en)}</th>'
+               for k, _th, _en, kind in COLS)
+body = []
+for g in GROUPS:
+    grs = [r for r in rows if r["group"] == g]
+    if not grs:
+        continue
+    grs.sort(key=lambda r: r["function"])
+    accent = GROUP_ACCENT[g]
+    for r in grs:
+        body.append(_row_html(r, accent))
+    sub = _agg(grs); sub["group"] = g; sub["function"] = f"รวม {g} · Total {g}"
+    body.append(_row_html(sub, accent, cls="subtot"))
+gt = dict(grand); gt["group"] = ""; gt["function"] = "GRAND TOTAL"
+body.append(_row_html(gt, "#1f2937", cls="grand"))
+
+px = 8 if density.startswith("กระชับ") else 11
+table_html = f"""
 <style>
-[data-testid="stDataFrame"] table {{ font-size: {density_css['font_size']}; }}
-[data-testid="stDataFrame"] tbody tr td,
-[data-testid="stDataFrame"] thead tr th {{
-    padding-top: 4px; padding-bottom: 4px; height: {density_css['row_height']};
-}}
-/* Make sure Streamlit's native dataframe toolbar (search/download/expand) is visible */
-[data-testid="stElementToolbar"] {{
-    opacity: 0.85 !important;
-    background: rgba(255,255,255,0.95) !important;
-    border-radius: 8px !important;
-    border: 1px solid rgba(15,23,42,0.10) !important;
-}}
-[data-testid="stElementToolbar"]:hover {{
-    opacity: 1 !important;
-}}
+.whr-wrap{{width:100%;overflow-x:auto;border:1px solid #e6e9f2;
+  border-radius:16px;box-shadow:0 6px 22px rgba(15,23,42,.06);margin:6px 0 4px}}
+.whr{{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px;
+  font-variant-numeric:tabular-nums;min-width:640px}}
+.whr thead th{{position:sticky;top:0;z-index:2;background:linear-gradient(135deg,
+  #2A2F45,#4b3b63);color:#fff;font-weight:700;padding:10px {px}px;
+  white-space:nowrap;font-size:11.5px;text-align:right;border-bottom:0}}
+.whr thead th:nth-child(1),.whr thead th:nth-child(2){{text-align:left}}
+.whr tbody td{{padding:{px-2}px {px}px;border-bottom:1px solid #eef1f7;
+  white-space:nowrap;color:#26303E}}
+.whr tbody tr:nth-child(even) td{{background:#fafbff}}
+.whr tbody tr:hover td{{background:#eef6fd}}
+.whr .grpcell{{color:#5b6472;font-size:11px}}
+.whr tbody tr td.subtot{{background:#efeafa !important;font-weight:800;
+  color:#3d2a66;border-top:2px solid #d8cdf0;border-bottom:2px solid #d8cdf0}}
+.whr tbody tr td.grand{{background:#1f2937 !important;color:#fff;
+  font-weight:800;font-size:13px}}
+</style>
+<div class="whr-wrap"><table class="whr"><thead><tr>{head}</tr></thead>
+<tbody>{''.join(body)}</tbody></table></div>
 """
-if full_width:
-    extra_css += """
-[data-testid="stSidebar"] { display: none !important; }
-[data-testid="stSidebarCollapsedControl"] { display: block !important; }
-.block-container { max-width: 100% !important; padding-left: 2rem; padding-right: 2rem; }
-"""
-extra_css += "</style>"
-st.markdown(extra_css, unsafe_allow_html=True)
+st.markdown(table_html, unsafe_allow_html=True)
+st.caption("เลื่อนซ้าย-ขวาเพื่อดูทุกคอลัมน์ · scroll horizontally to see all "
+           "columns • เปิด 'ตั้งค่ารายงาน' เพื่อเลือกคอลัมน์/ประเภทการลา")
 
-# Display table (with subtotals interleaved) -----------------------------------
-ID_COLS = exports.ID_COLS
-HC_COLS = exports.HC_COLS
-WORK_COLS = exports.WORK_COLS
-ABSENT_COLS = exports.ABSENT_COLS
-PCT_ABSENT_COLS = exports.PCT_ABSENT_COLS
-OT_COLS = exports.OT_COLS
-AL_COLS = exports.AL_COLS
-SICK_COLS = exports.SICK_COLS
-BUSINESS_COLS = exports.BUSINESS_COLS
-WITHOUT_PAY_COLS = exports.WITHOUT_PAY_COLS
-
-cols = ID_COLS + HC_COLS + WORK_COLS + ABSENT_COLS + PCT_ABSENT_COLS + OT_COLS
-if include_sick:
-    cols += SICK_COLS
-if include_business:
-    cols += BUSINESS_COLS
-if include_without_pay:
-    cols += WITHOUT_PAY_COLS
-if include_al:
-    cols += AL_COLS
-
-groups_by_top = {g["sg_a_manu"]: g for g in report["groups"]}
-
-display_rows = []
-row_kinds = []
-last_top = None
-for r in report["rows"]:
-    top = r.get("sg_a_manu", "")
-    if last_top is not None and top != last_top:
-        if last_top in groups_by_top:
-            sub = dict(groups_by_top[last_top])
-            sub["sg_a_manu"] = f"⮕ Total {last_top}"
-            sub["department"] = ""
-            display_rows.append(sub)
-            row_kinds.append("sub")
-    last_top = top
-    display_rows.append(r)
-    row_kinds.append("data")
-if last_top is not None and last_top in groups_by_top:
-    sub = dict(groups_by_top[last_top])
-    sub["sg_a_manu"] = f"⮕ Total {last_top}"
-    sub["department"] = ""
-    display_rows.append(sub)
-    row_kinds.append("sub")
-g = dict(report["grand_total"])
-g["sg_a_manu"] = "GRAND TOTAL"
-g["department"] = ""
-display_rows.append(g)
-row_kinds.append("grand")
-
-display_df = pd.DataFrame(display_rows)[cols].rename(
-    columns={"sg_a_manu": "SG&A / MANU", "department": "Function"}
-)
-
-# Style: highlight subtotal/grand rows
-def _row_style(row):
-    idx = row.name
-    kind = row_kinds[idx] if idx < len(row_kinds) else "data"
-    if kind == "grand":
-        return ["background-color:#1F3864; color:white; font-weight:bold;"] * len(row)
-    if kind == "sub":
-        return ["background-color:#305496; color:white; font-weight:bold;"] * len(row)
-    return [""] * len(row)
+# ───────────────────────── export ──────────────────────────────────────
+st.markdown("##### ⬇️ ส่งออก · Export")
+hdrs = [(_th if _lang == "th" else _en) for k, _th, _en, kind in COLS]
 
 
-# Number formatting per column
-fmt = {}
-for c in cols:
-    if c in HC_COLS:
-        fmt[c] = "{:,.0f}"
-    elif c in PCT_ABSENT_COLS or c == "% OT":
-        fmt[c] = "{:.2f}%"
-    elif c not in ID_COLS:
-        fmt[c] = "{:,.1f}"
+def _table_matrix():
+    mat = [hdrs]
+    for g in GROUPS:
+        grs = sorted([r for r in rows if r["group"] == g],
+                     key=lambda r: r["function"])
+        for r in grs:
+            mat.append([r.get(k, "") if kind == "lbl" else
+                        round(r.get(k, 0), 2) for k, _t, _e, kind in COLS])
+        if grs:
+            sub = _agg(grs); sub["group"] = g
+            sub["function"] = f"Total {g}"
+            mat.append([sub.get(k, "") if kind == "lbl" else
+                        round(sub.get(k, 0), 2) for k, _t, _e, kind in COLS])
+    g2 = dict(grand); g2["group"] = ""; g2["function"] = "GRAND TOTAL"
+    mat.append([g2.get(k, "") if kind == "lbl" else round(g2.get(k, 0), 2)
+                for k, _t, _e, kind in COLS])
+    return mat
 
-styler = (
-    display_df.style
-    .format({k.replace("sg_a_manu", "SG&A / MANU").replace("department", "Function"): v
-             for k, v in fmt.items()})
-    .apply(_row_style, axis=1)
-)
 
-st.dataframe(styler, use_container_width=True, hide_index=True, height=table_height)
-
-# ---------- summary metrics ----------
-gt = report["grand_total"]
-st.markdown("### Summary")
-m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("Headcount (Total)", int(gt.get("Total HC", 0)),
-          help=f'PER {int(gt.get("Permanent HC",0))} + SUB {int(gt.get("Contract HC",0))} + TEM {int(gt.get("TP HC",0))}')
-m2.metric(f"Working ({unit})", f'{gt.get("Total Working Hrs",0):,.1f}')
-m3.metric(f"Absent excl AL ({unit})", f'{gt.get("Total Absent Hrs",0):,.1f}',
-          delta=f'{gt.get("% Total Absent",0):.2f}%', delta_color="off")
-m4.metric(f"OT total ({unit})", f'{gt.get("Total OT",0):,.1f}',
-          delta=f'{gt.get("% OT",0):.2f}%', delta_color="off")
-m5.metric(f"Annual Leave ({unit})", f'{gt.get("Total AL",0):,.1f}')
-
-# ---------- exports ----------
-st.markdown("---")
-st.markdown("### Export")
-e1, e2, e3 = st.columns([1, 1, 4])
-
-xls_bytes = exports.to_excel_bytes(
-    report, include_al=include_al,
-    include_sick=include_sick, include_business=include_business,
-    include_without_pay=include_without_pay,
-    username=effective_user,
-)
-e1.download_button(
-    label="⬇️ Excel (.xlsx)",
-    data=xls_bytes,
-    file_name=f"HR_Report_{period}_{unit}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    use_container_width=True,
-)
-
-png_bytes = exports.to_png_bytes(
-    report, include_al=include_al,
-    include_sick=include_sick, include_business=include_business,
-    include_without_pay=include_without_pay,
-)
-if png_bytes:
-    e2.download_button(
-        label="🖼️ PNG image",
-        data=png_bytes,
-        file_name=f"HR_Report_{period}_{unit}.png",
-        mime="image/png",
-        use_container_width=True,
-    )
+e1, e2 = st.columns(2)
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+wb = Workbook(); ws = wb.active; ws.title = "Working hours"
+mat = _table_matrix()
+for ri, row in enumerate(mat):
+    ws.append(row)
+    for ci in range(1, len(row) + 1):
+        cell = ws.cell(ri + 1, ci)
+        if ri == 0:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="2A2F45")
+        elif str(row[1]).startswith("Total "):
+            cell.fill = PatternFill("solid", fgColor="EFEAFA")
+            cell.font = Font(bold=True)
+        elif row[1] == "GRAND TOTAL":
+            cell.fill = PatternFill("solid", fgColor="1F2937")
+            cell.font = Font(bold=True, color="FFFFFF")
+buf = io.BytesIO(); wb.save(buf)
+e1.download_button("📊 Excel (.xlsx)", buf.getvalue(),
+                   file_name=f"Working_hour_report_{period_label}.xlsx",
+                   use_container_width=True)
+# PNG generated inline — no "prepare" step; the download button just appears.
+_png_bytes = None
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    # register bundled Thai font so any Thai cell text renders (not tofu)
+    try:
+        import os as _os
+        import matplotlib.font_manager as _fm
+        _fpath = "assets/fonts/Sarabun-Regular.ttf"
+        if not _os.path.exists(_fpath):
+            _fpath = _os.path.join(_os.path.dirname(__file__), "..",
+                                   "assets", "fonts", "Sarabun-Regular.ttf")
+        if _os.path.exists(_fpath):
+            _fm.fontManager.addfont(_fpath)
+            matplotlib.rcParams["font.family"] = \
+                _fm.FontProperties(fname=_fpath).get_name()
+    except Exception:
+        pass
+    # PNG column headers are ALWAYS English (Thai headers render poorly here)
+    _png_hdrs = [_en for k, _t, _en, kind in COLS]
+    fig, ax = plt.subplots(figsize=(min(24, 1.0 * len(COLS)),
+                                    0.34 * (len(mat) + 1)))
+    ax.axis("off")
+    tbl = ax.table(cellText=[[str(c) for c in r] for r in mat[1:]],
+                   colLabels=_png_hdrs, loc="center", cellLoc="center")
+    tbl.auto_set_font_size(False); tbl.set_fontsize(7); tbl.scale(1, 1.3)
+    for j in range(len(_png_hdrs)):
+        tbl[0, j].set_facecolor("#2A2F45")
+        tbl[0, j].set_text_props(color="white", fontweight="bold")
+    _pb = io.BytesIO(); fig.savefig(_pb, dpi=150, bbox_inches="tight")
+    plt.close(fig); _png_bytes = _pb.getvalue()
+except Exception:
+    _png_bytes = None
+if _png_bytes:
+    e2.download_button("🖼️ PNG image", _png_bytes,
+                       file_name=f"Working_hour_report_{period_label}.png",
+                       mime="image/png", use_container_width=True)
 else:
-    e2.button("🖼️ PNG image", disabled=True, use_container_width=True,
-              help="PNG export needs `kaleido` installed (see requirements.txt)")
+    e2.caption("PNG ไม่พร้อมในเครื่องนี้ · PNG unavailable here")

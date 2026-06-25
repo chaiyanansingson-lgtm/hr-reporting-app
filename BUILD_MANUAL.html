@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AMS HRM — Complete Build Manual (Beginner, Step-by-Step)</title>
+<style>
+ @page { size: A4; margin: 16mm 14mm 18mm 14mm;
+   @bottom-center { content: "AMS HRM Build Manual — page " counter(page) " / " counter(pages);
+                    font-family: Sarabun; font-size: 9px; color:#999; } }
+ body{font-family:"Sarabun","Loma",sans-serif;font-size:11.5px;line-height:1.55;
+      color:#26303e;margin:0}
+ h1{font-size:24px;margin:0 0 4px;color:#1d2433}
+ h2{font-size:16.5px;margin:26px 0 8px;padding:7px 12px;border-radius:8px;color:#fff;
+    background:linear-gradient(95deg,#009ADE,#715091 70%);page-break-after:avoid}
+ h3{font-size:13px;margin:16px 0 5px;color:#715091;page-break-after:avoid}
+ p{margin:5px 0}
+ code,.k{font-family:"DejaVu Sans Mono",monospace;font-size:10px;background:#f1f3f9;
+   border:1px solid #e2e6f0;border-radius:4px;padding:1px 5px}
+ pre{font-family:"DejaVu Sans Mono",monospace;font-size:9.5px;background:#0f172a;color:#dbe5f5;
+   border-radius:8px;padding:10px 12px;white-space:pre-wrap;page-break-inside:avoid}
+ .steps{counter-reset:s;list-style:none;padding:0;margin:8px 0}
+ .steps>li{counter-increment:s;position:relative;padding:7px 10px 7px 40px;margin:6px 0;
+   background:#fafbfe;border:1px solid #e7eaf3;border-radius:9px;page-break-inside:avoid}
+ .steps>li::before{content:counter(s);position:absolute;left:9px;top:8px;width:22px;height:22px;
+   border-radius:50%;background:linear-gradient(135deg,#009ADE,#715091);color:#fff;
+   font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center}
+ .callout{border-radius:9px;padding:9px 12px;margin:9px 0;page-break-inside:avoid}
+ .why{background:#eef6ff;border:1px solid #cfe5fb}
+ .warn{background:#fff7ed;border:1px solid #fcd9a8}
+ .ok{background:#effaf2;border:1px solid #c8ecd2}
+ .danger{background:#fdf0f3;border:1px solid #f5c6d2}
+ table{border-collapse:collapse;width:100%;margin:8px 0;font-size:10.5px;page-break-inside:avoid}
+ th{background:#715091;color:#fff;text-align:left;padding:6px 8px}
+ td{border:1px solid #e3e7f1;padding:5px 8px;vertical-align:top}
+ tr:nth-child(even) td{background:#f8f9fd}
+ .fig{margin:12px 0;text-align:center;page-break-inside:avoid}
+ .fig figcaption{font-size:9.5px;color:#8a93a6;margin-top:4px}
+ .toc td{border:0;padding:3px 6px}
+ .pill{display:inline-block;font-size:9px;font-weight:700;color:#fff;border-radius:10px;
+   padding:1px 8px;background:#715091;vertical-align:middle}
+ .pb{page-break-before:always}
+ .cover{height:250mm;display:flex;flex-direction:column;justify-content:center}
+ .badge{width:64px;height:64px;border-radius:16px;color:#fff;font-weight:800;font-size:32px;
+   display:flex;align-items:center;justify-content:center;
+   background:linear-gradient(135deg,#009ADE,#715091 55%,#E31D93);margin-bottom:18px}
+ .small{font-size:9.5px;color:#8a93a6}
+</style>
+</head>
+<body>
+
+<!-- ================= COVER ================= -->
+<div class="cover">
+  <div class="badge">A</div>
+  <h1>AMS HR System — Complete Build Manual</h1>
+  <p style="font-size:14px;color:#5a6478">คู่มือสร้างระบบทีละขั้น สำหรับผู้เริ่มต้น /
+  Step-by-step, for a beginner — no prior deployment experience assumed.</p>
+  <p style="margin-top:14px">Covers the whole package: <b>Report · Org Chart (photos) ·
+  Employee Data (PDPA) · Leave &amp; OT with 3-level approval + email reminders ·
+  Car Booking (Jira + LINE) · Stationery ERP (OFFICEMATE PO + reimbursement) ·
+  Users &amp; Roles</b></p>
+  <p class="small" style="margin-top:24px">ANCA Manufacturing Solutions (Thailand) — HR ·
+  Version 2026-06-12 · Goes with the package <code>AMS_HRM_Complete.zip</code><br>
+  Honesty note: everything in this manual matches the code in the package. Where a step
+  depends on YOUR accounts (Jira ids, SMTP password, Supabase URL) it says so explicitly —
+  nothing is invented.</p>
+</div>
+
+<!-- ================= TOC ================= -->
+<h2>Contents / สารบัญ</h2>
+<table class="toc">
+<tr><td><b>§0</b></td><td>What you are building (the big picture)</td></tr>
+<tr><td><b>§1</b></td><td>Accounts &amp; tools you need (all free to start)</td></tr>
+<tr><td><b>§2</b></td><td>Run the app on your own computer first</td></tr>
+<tr><td><b>§3</b></td><td>Put the code on GitHub</td></tr>
+<tr><td><b>§4</b></td><td>Deploy to Streamlit Cloud (your live website)</td></tr>
+<tr><td><b>§5</b></td><td>First login, change the password, create accounts</td></tr>
+<tr><td><b>§6</b></td><td>Make data permanent — Supabase database</td></tr>
+<tr><td><b>§7</b></td><td>Load your data: MASTER file, photos, org chart</td></tr>
+<tr><td><b>§8</b></td><td>Leave &amp; OT — how the 3-level approval works</td></tr>
+<tr><td><b>§9</b></td><td>Email notifications + automatic daily reminders</td></tr>
+<tr><td><b>§10</b></td><td>Car Booking — Jira + Apps Script + LINE</td></tr>
+<tr><td><b>§11</b></td><td>Stationery ERP — catalog, PO, reimbursement</td></tr>
+<tr><td><b>§12</b></td><td>Roles &amp; permissions reference</td></tr>
+<tr><td><b>§13</b></td><td>Maintenance, backups &amp; troubleshooting</td></tr>
+</table>
+
+<!-- ================= §0 ================= -->
+<h2>§0 — What you are building</h2>
+<p>One Streamlit web app (Python) with a database behind it, plus two small external
+helpers that you already built in earlier sessions: a <b>Google Apps Script hub</b> for
+car booking (talking to Jira and LINE) and your <b>OfficeMate catalogue data</b> feeding
+the ERP module.</p>
+
+<div class="fig">
+<svg width="690" height="330" viewBox="0 0 690 330" xmlns="http://www.w3.org/2000/svg" font-family="Sarabun">
+  <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 z" fill="#8a93a6"/></marker></defs>
+  <!-- browser -->
+  <rect x="10" y="120" width="130" height="70" rx="10" fill="#eef6ff" stroke="#009ADE"/>
+  <text x="75" y="148" text-anchor="middle" font-size="12" font-weight="bold">Staff browser</text>
+  <text x="75" y="166" text-anchor="middle" font-size="10">phone / PC</text>
+  <!-- app -->
+  <rect x="200" y="60" width="220" height="200" rx="12" fill="#f6f1fb" stroke="#715091" stroke-width="2"/>
+  <text x="310" y="83" text-anchor="middle" font-size="13" font-weight="bold" fill="#715091">Streamlit app (the HRM)</text>
+  <text x="310" y="100" text-anchor="middle" font-size="9.5">anca-hr-reporting.streamlit.app</text>
+  <g font-size="9.5">
+    <rect x="214" y="110" width="92" height="22" rx="5" fill="#fff" stroke="#d9cdeb"/><text x="260" y="125" text-anchor="middle">Report</text>
+    <rect x="314" y="110" width="92" height="22" rx="5" fill="#fff" stroke="#d9cdeb"/><text x="360" y="125" text-anchor="middle">Org Chart</text>
+    <rect x="214" y="138" width="92" height="22" rx="5" fill="#fff" stroke="#d9cdeb"/><text x="260" y="153" text-anchor="middle">Employee Data</text>
+    <rect x="314" y="138" width="92" height="22" rx="5" fill="#fff" stroke="#d9cdeb"/><text x="360" y="153" text-anchor="middle">Leave &amp; OT (3-level)</text>
+    <rect x="214" y="166" width="92" height="22" rx="5" fill="#fff" stroke="#d9cdeb"/><text x="260" y="181" text-anchor="middle">Car Booking</text>
+    <rect x="314" y="166" width="92" height="22" rx="5" fill="#fff" stroke="#d9cdeb"/><text x="360" y="181" text-anchor="middle">Stationery ERP</text>
+    <rect x="214" y="194" width="192" height="22" rx="5" fill="#fff" stroke="#d9cdeb"/><text x="310" y="209" text-anchor="middle">Users &amp; Roles (RBAC, 7 roles)</text>
+  </g>
+  <text x="310" y="245" text-anchor="middle" font-size="9" fill="#8a93a6">code lives on GitHub → Streamlit Cloud runs it</text>
+  <!-- supabase -->
+  <rect x="480" y="40" width="190" height="60" rx="10" fill="#effaf2" stroke="#2da25e"/>
+  <text x="575" y="64" text-anchor="middle" font-size="12" font-weight="bold">Supabase Postgres</text>
+  <text x="575" y="82" text-anchor="middle" font-size="9.5">permanent database (§6)</text>
+  <!-- email -->
+  <rect x="480" y="115" width="190" height="50" rx="10" fill="#fff7ed" stroke="#e8a23d"/>
+  <text x="575" y="136" text-anchor="middle" font-size="12" font-weight="bold">Email (SMTP)</text>
+  <text x="575" y="152" text-anchor="middle" font-size="9.5">approval alerts + reminders (§9)</text>
+  <!-- hub -->
+  <rect x="480" y="180" width="190" height="64" rx="10" fill="#eef6ff" stroke="#009ADE"/>
+  <text x="575" y="201" text-anchor="middle" font-size="12" font-weight="bold">Apps Script hub</text>
+  <text x="575" y="217" text-anchor="middle" font-size="9.5">→ Jira AHA (bookings)</text>
+  <text x="575" y="231" text-anchor="middle" font-size="9.5">→ LINE @529aaynp (drivers)</text>
+  <!-- arrows -->
+  <line x1="140" y1="155" x2="198" y2="155" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="420" y1="90" x2="478" y2="74" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="420" y1="140" x2="478" y2="140" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="420" y1="190" x2="478" y2="208" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#ar)"/>
+  <!-- officemate -->
+  <rect x="200" y="285" width="220" height="36" rx="9" fill="#fdf0f3" stroke="#E31D93"/>
+  <text x="310" y="302" text-anchor="middle" font-size="10.5" font-weight="bold">OfficeMate catalogue CSV (extraction project)</text>
+  <text x="310" y="315" text-anchor="middle" font-size="9">import into ERP — photos load from OFM CDN by product code</text>
+  <line x1="310" y1="283" x2="310" y2="262" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#ar)"/>
+</svg>
+<figcaption>Figure 1 — the whole system. You only maintain ONE app; the green/orange/blue boxes are services it talks to.</figcaption>
+</div>
+
+<div class="callout why"><b>Why this shape?</b> Streamlit Cloud is free but its disk is
+wiped on every restart — that's why the database lives in Supabase (§6). The car booking
+keeps its proven Jira/LINE backbone; the HRM is just its front door, so nothing you built
+before is thrown away.</div>
+
+<!-- ================= §1 ================= -->
+<h2 class="pb">§1 — Accounts &amp; tools you need</h2>
+<table>
+<tr><th>What</th><th>Used for</th><th>Cost</th><th>Where</th></tr>
+<tr><td><b>Python 3.11+</b></td><td>run the app on your PC</td><td>free</td><td>python.org</td></tr>
+<tr><td><b>GitHub account</b></td><td>store the code; Streamlit Cloud reads from it</td><td>free</td><td>github.com</td></tr>
+<tr><td><b>Streamlit Community Cloud</b></td><td>host the live app</td><td>free</td><td>share.streamlit.io (sign in with GitHub)</td></tr>
+<tr><td><b>Supabase</b></td><td>permanent Postgres database</td><td>free tier OK; Pro $25/mo for no-pause + daily backups</td><td>supabase.com</td></tr>
+<tr><td><b>An email account for sending</b></td><td>approval notifications (§9)</td><td>free (Microsoft 365 / Gmail App Password)</td><td>your IT</td></tr>
+<tr><td><b>Jira (you have it)</b></td><td>car booking system of record — project AHA</td><td>existing</td><td>ancagroup.atlassian.net</td></tr>
+<tr><td><b>LINE OA (you have it)</b></td><td>driver notifications</td><td>existing</td><td>@529aaynp · developers.line.biz</td></tr>
+</table>
+<div class="callout warn"><b>Security rule for the whole manual:</b> passwords, API tokens
+and database URLs go ONLY into <i>Secrets</i> (Streamlit settings, Script Properties,
+GitHub repository secrets) — never into code files, never pasted into chat. If a token was
+ever shown in a chat, rotate it.</div>
+
+<!-- ================= §2 ================= -->
+<h2>§2 — Run the app on your own computer first</h2>
+<p>Always make it work on your PC before touching the internet — fixing problems locally
+is 10× easier.</p>
+<ol class="steps">
+<li>Unzip <code>AMS_HRM_Complete.zip</code> somewhere easy, e.g. <code>C:\ams-hrm</code>.
+    You should see <code>app.py</code>, folders <code>lib/ pages/ assets/ apps_script/
+    scripts/</code> and <code>requirements.txt</code>.</li>
+<li>Open <b>Command Prompt</b> (Windows key → type <code>cmd</code>) and go there:
+    <pre>cd C:\ams-hrm</pre></li>
+<li>Install the libraries (one time):
+    <pre>pip install -r requirements.txt</pre>
+    <span class="small">If <code>weasyprint</code> fails on Windows, that's OK — it's only
+    for printing the government forms as PDF; everything else still runs. The print tab
+    will offer HTML instead.</span></li>
+<li>Start the app:
+    <pre>streamlit run app.py</pre>
+    A browser tab opens at <code>http://localhost:8501</code>.</li>
+<li>Log in with the first-boot account <code>superadmin / ChangeMe!2026</code>.
+    You will change this in §5.</li>
+</ol>
+<div class="callout ok"><b>Checkpoint [OK]</b> you can see the home page and the left sidebar
+lists: System Admin, Report, Org Chart, Visitor Portal, Candidate Portal, Employee Data,
+My Profile, Leave &amp; OT, Car Booking, Stationery ERP.</div>
+<div class="callout warn"><b>On your PC the app uses a temporary SQLite file</b>
+(<code>data/hr.db</code>). That's fine for testing. The permanent database comes in §6 —
+the app shows a yellow warning until then, on purpose.</div>
+
+<!-- ================= §3 ================= -->
+<h2>§3 — Put the code on GitHub</h2>
+<div class="callout why"><b>Why?</b> Streamlit Cloud doesn't accept a zip — it watches a
+GitHub repository and redeploys automatically every time you change the code.</div>
+<ol class="steps">
+<li>Sign in at github.com → top-right <b>+</b> → <b>New repository</b>.
+    Name: <code>ams-hrm</code>. Visibility: <b>Private</b>. Create.</li>
+<li>Easiest upload (no Git commands): in the new repo click
+    <b>uploading an existing file</b>, drag in EVERYTHING from the unzipped folder
+    (keep the folder structure), then <b>Commit changes</b>.</li>
+<li>Check that <code>app.py</code> is at the repository ROOT (not inside an extra
+    folder). If GitHub shows <code>ams-hrm/hr_app/app.py</code>, move files up one level.</li>
+<li><b>Do NOT upload</b> <code>.streamlit/secrets.toml</code> (real secrets) or
+    <code>data/hr.db</code>. The package only contains
+    <code>secrets.toml.example</code>, which is safe.</li>
+</ol>
+
+<!-- ================= §4 ================= -->
+<h2>§4 — Deploy to Streamlit Cloud</h2>
+<ol class="steps">
+<li>Go to <b>share.streamlit.io</b> → sign in with GitHub → <b>New app</b>.</li>
+<li>Repository: <code>your-name/ams-hrm</code> · Branch: <code>main</code> ·
+    Main file: <code>app.py</code>.</li>
+<li>App URL: choose the name (yours is already
+    <code>anca-hr-reporting</code>) → <b>Deploy</b>. First build takes a few minutes.</li>
+<li>Open <b>⋮ → Settings → Secrets</b> and paste the contents of
+    <code>.streamlit/secrets.toml.example</code>, then fill the real values as you
+    complete §6 (DATABASE_URL), §9 ([smtp]) and §10 ([car_booking]). Save — the app
+    restarts itself.</li>
+</ol>
+<div class="callout warn"><b>Already have the app deployed?</b> Your live
+<code>anca-hr-reporting</code> app keeps working. To upgrade it to this package, replace
+the files in its GitHub repo with these ones. One honest caveat: I rebuilt
+<code>pages/1_Report.py</code> as a clean baseline because I cannot open your deployed
+copy — if your live Report page has extra charts you added later, KEEP YOUR FILE and skip
+mine; nothing else depends on it.</div>
+
+<!-- ================= §5 ================= -->
+<h2>§5 — First login &amp; accounts</h2>
+<ol class="steps">
+<li>Log in as <code>superadmin / ChangeMe!2026</code>.</li>
+<li>Open <b>System Admin → Users</b>. Create your own account:
+    username, strong password, role <code>super_admin</code>,
+    <b>Emp. No. = 1021656</b>, your email. Then create a second
+    <code>admin</code> account for daily HR work (admin cannot see salary —
+    that separation is deliberate).</li>
+<li>Create the <code>superadmin</code> replacement habit: after your own super_admin
+    account works, change the bootstrap password — System Admin has the user list;
+    set a long random password for <code>superadmin</code> and store it in your
+    password manager (it stays as the emergency key).</li>
+<li><b>Link every user to an Emp. No.</b> (Users tab → "Link account ↔ employee").
+    This is what makes <i>My Profile</i>, the <i>3-level approval chain</i> and
+    <i>email notifications</i> know who is who. Also fill each manager's
+    <b>Email</b> here — approval mail goes to this address first.</li>
+</ol>
+<div class="fig">
+<svg width="660" height="120" viewBox="0 0 660 120" xmlns="http://www.w3.org/2000/svg" font-family="Sarabun">
+  <defs><marker id="a2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 z" fill="#8a93a6"/></marker></defs>
+  <rect x="10" y="30" width="180" height="60" rx="10" fill="#f6f1fb" stroke="#715091"/>
+  <text x="100" y="55" text-anchor="middle" font-size="11" font-weight="bold">Login account</text>
+  <text x="100" y="73" text-anchor="middle" font-size="10">username · role · email</text>
+  <rect x="250" y="30" width="160" height="60" rx="10" fill="#eef6ff" stroke="#009ADE"/>
+  <text x="330" y="55" text-anchor="middle" font-size="11" font-weight="bold">Emp. No.</text>
+  <text x="330" y="73" text-anchor="middle" font-size="10">e.g. 1021656</text>
+  <rect x="470" y="10" width="180" height="100" rx="10" fill="#effaf2" stroke="#2da25e"/>
+  <text x="560" y="32" text-anchor="middle" font-size="11" font-weight="bold">Unlocks</text>
+  <text x="560" y="52" text-anchor="middle" font-size="10">My Profile</text>
+  <text x="560" y="69" text-anchor="middle" font-size="10">Leave/OT chain (Mgr column)</text>
+  <text x="560" y="86" text-anchor="middle" font-size="10">Email notifications</text>
+  <line x1="190" y1="60" x2="248" y2="60" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#a2)"/>
+  <line x1="410" y1="60" x2="468" y2="60" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#a2)"/>
+</svg>
+<figcaption>Figure 2 — the account → employee link is the key that makes the personal modules work.</figcaption>
+</div>
+
+<!-- ================= §6 ================= -->
+<h2>§6 — Make data permanent: Supabase</h2>
+<div class="callout danger"><b>This is the most important section.</b> Without it, every
+redeploy/sleep of Streamlit Cloud wipes your database — the old "re-upload everything
+every 7 days" pain. With it, data lives in Supabase Postgres permanently.</div>
+<ol class="steps">
+<li>supabase.com → New project. Region: <b>Southeast Asia (Singapore)</b>.
+    Set a strong <b>database password</b> and save it.</li>
+<li>In the project: <b>Connect</b> (top bar) → tab <b>ORMs/URI</b> → copy the
+    <b>Transaction pooler</b> URI. It looks like:<br>
+    <code>postgresql://postgres.abcdefgh:[PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres</code></li>
+<li>Replace <code>[PASSWORD]</code> with your real password.</li>
+<li>Streamlit Cloud → your app → Settings → <b>Secrets</b> → add one line at the top:
+    <pre>DATABASE_URL = "postgresql://postgres.abcdefgh:YourPassword@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"</pre></li>
+<li>Save → app restarts → the yellow "temporary SQLite" warning on the home page
+    disappears. The app creates all tables itself on first boot (you do NOT write SQL).</li>
+<li>Re-create your users (§5) and re-upload the MASTER (§7) once — this is the one-time
+    move from the throwaway database to the permanent one.</li>
+</ol>
+<div class="callout why"><b>Free tier vs Pro:</b> free pauses the database after ~1 week
+of no traffic (first visitor then waits ~1 minute while it wakes). Pro ($25/mo) never
+pauses and adds daily backups — recommended once the company relies on it.</div>
+<!-- ================= §7 ================= -->
+<h2 class="pb">§7 — Load your data</h2>
+<h3>7.1 Employee MASTER</h3>
+<ol class="steps">
+<li><b>Employee Data → Bulk &amp; Exports → Bulk upload.</b> Drop your
+    <code>Employee List MASTER V.6</code> Excel directly — the parser recognises the
+    MASTER layout (it mapped all 43 columns and imported 190 rows in testing) as well as
+    the app's own flat template.</li>
+<li>Review the preview, press <b>Import</b>. Salary columns are accepted ONLY if you are
+    super_admin — for admin uploads they are ignored by design.</li>
+<li>Spot-check 2–3 people in the Directory (we verified record 1021656 and 1021499
+    against the source during testing).</li>
+</ol>
+<h3>7.2 Photos &amp; org chart</h3>
+<ol class="steps">
+<li><b>Employee Data → Photos</b>: upload a face photo per employee — auto-cropped to
+    200×200 JPEG ≤100 KB.</li>
+<li><b>Org Chart</b> page then shows every photo automatically, and the chart toolbar has
+    <b>Download JPG</b> for a 2× export of the current view.</li>
+</ol>
+<h3>7.3 OfficeMate catalogue → ERP</h3>
+<ol class="steps">
+<li><b>Stationery ERP → Catalog admin → Import.</b> Upload the extraction master CSV/XLSX
+    (the file produced by the catalogue-extraction sessions; columns =
+    <code>product_code, item_no_model, category_type, description, brand, capacity,
+    color, min_order_qty, price_thb, currency, image_file, source_catalogue,
+    source_page, catalogue_note</code>).</li>
+<li>Re-import after every extraction session — it upserts by <code>product_code</code>,
+    so new rows add and existing rows update; nothing duplicates.</li>
+<li>Retail product photos need no upload at all: the page builds the OfficeMate CDN URL
+    from the code (<code>100-9755 → …/products/large/1009755.jpg</code>).</li>
+</ol>
+
+<!-- ================= §8 ================= -->
+<h2>§8 — Leave &amp; OT: the 3-level approval</h2>
+<p>The approval route is <b>not configured by hand</b> — it is read live from the
+<b>Mgr column</b> of the employee master (the same data as the org chart):
+L1 = direct manager, L2 = the manager's manager, L3 = one more level up.</p>
+
+<div class="fig">
+<svg width="690" height="190" viewBox="0 0 690 190" xmlns="http://www.w3.org/2000/svg" font-family="Sarabun">
+  <defs><marker id="a3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 z" fill="#8a93a6"/></marker></defs>
+  <rect x="8" y="60" width="110" height="62" rx="10" fill="#eef6ff" stroke="#009ADE"/>
+  <text x="63" y="85" text-anchor="middle" font-size="11" font-weight="bold">Staff</text>
+  <text x="63" y="102" text-anchor="middle" font-size="9.5">submits leave/OT</text>
+  <g>
+    <rect x="156" y="60" width="118" height="62" rx="10" fill="#f6f1fb" stroke="#715091"/>
+    <text x="215" y="80" text-anchor="middle" font-size="11" font-weight="bold">L1 approve</text>
+    <text x="215" y="96" text-anchor="middle" font-size="9.5">direct manager</text>
+    <text x="215" y="111" text-anchor="middle" font-size="9">+ email on arrival</text>
+  </g>
+  <g>
+    <rect x="312" y="60" width="118" height="62" rx="10" fill="#f6f1fb" stroke="#715091"/>
+    <text x="371" y="80" text-anchor="middle" font-size="11" font-weight="bold">L2 approve</text>
+    <text x="371" y="96" text-anchor="middle" font-size="9.5">manager's manager</text>
+    <text x="371" y="111" text-anchor="middle" font-size="9">+ email on arrival</text>
+  </g>
+  <g>
+    <rect x="468" y="60" width="118" height="62" rx="10" fill="#f6f1fb" stroke="#715091"/>
+    <text x="527" y="80" text-anchor="middle" font-size="11" font-weight="bold">L3 approve</text>
+    <text x="527" y="96" text-anchor="middle" font-size="9.5">one more level up</text>
+    <text x="527" y="111" text-anchor="middle" font-size="9">+ email on arrival</text>
+  </g>
+  <rect x="620" y="60" width="62" height="62" rx="10" fill="#effaf2" stroke="#2da25e"/>
+  <text x="651" y="90" text-anchor="middle" font-size="11" font-weight="bold">OK</text>
+  <text x="651" y="106" text-anchor="middle" font-size="9">approved</text>
+  <line x1="118" y1="91" x2="154" y2="91" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#a3)"/>
+  <line x1="274" y1="91" x2="310" y2="91" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#a3)"/>
+  <line x1="430" y1="91" x2="466" y2="91" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#a3)"/>
+  <line x1="586" y1="91" x2="618" y2="91" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#a3)"/>
+  <text x="345" y="22" text-anchor="middle" font-size="10.5" font-weight="bold" fill="#715091">Route = the Mgr column of the employee master (org chart data)</text>
+  <text x="345" y="38" text-anchor="middle" font-size="9.5" fill="#8a93a6">Real example from your data: welder → L1 Amontap Chaisit → L2 Somchai Srijun → L3 Ekphusit Boonjong</text>
+  <text x="345" y="160" text-anchor="middle" font-size="9.5" fill="#b3445f">Reject at ANY level → request becomes rejected, remaining levels are skipped, the staff is emailed with the approver's note</text>
+  <text x="345" y="178" text-anchor="middle" font-size="9.5" fill="#8a93a6">Shorter chains end early (e.g. a GM direct-report has only L1) · nobody can approve their own request</text>
+</svg>
+<figcaption>Figure 3 — the 3-level flow, exactly as verified in testing against the real MASTER.</figcaption>
+</div>
+
+<h3>Daily use</h3>
+<table>
+<tr><th>Who</th><th>Where</th><th>What they see</th></tr>
+<tr><td>Staff</td><td>Leave &amp; OT → Submit</td><td>their own chain shown above the form;
+after sending, "My requests" shows the live trail L1 [approved] → L2 [waiting] → L3 [·]</td></tr>
+<tr><td>Manager</td><td>Leave &amp; OT → My approvals</td><td>only items at THEIR level,
+with Approve/Reject + note; approving forwards it (and the email) to the next level</td></tr>
+<tr><td>HR</td><td>Leave &amp; OT → HR admin</td><td>the whole pipeline, who's sitting on
+what, and the reminder button (§9)</td></tr>
+</table>
+<div class="callout warn"><b>For the chain to resolve, three things must be true:</b>
+(1) the staff's login is linked to their Emp. No. (§5), (2) the Mgr column in the master
+holds the manager's name as written in the master (titles like Mr./Ms. are ignored
+automatically), (3) the manager exists as an active employee. If no manager is found the
+request auto-approves and is flagged in HR admin — visible, never stuck.</div>
+
+<!-- ================= §9 ================= -->
+<h2>§9 — Email notifications + automatic reminders</h2>
+<h3>9.1 One-time SMTP setup</h3>
+<ol class="steps">
+<li>Get a sending mailbox from IT — e.g. <code>hr-noreply@…</code> on Microsoft 365
+    (host <code>smtp.office365.com</code>, port 587) or a Gmail with an
+    <b>App Password</b> (host <code>smtp.gmail.com</code>, port 587).</li>
+<li>Streamlit Cloud → Settings → Secrets → add:
+<pre>[smtp]
+host = "smtp.office365.com"
+port = 587
+user = "hr-noreply@yourdomain.com"
+password = "the-app-password"
+from = "AMS HR System &lt;hr-noreply@yourdomain.com&gt;"
+app_url = "https://anca-hr-reporting.streamlit.app"</pre></li>
+<li>That's it. From now on: new request → email to L1; each approval → email to the next
+    level; final decision → email to the staff. If SMTP is missing the app still works
+    and simply says "email skipped" — it never crashes on mail problems.</li>
+</ol>
+<h3>9.2 Who gets the mail</h3>
+<p>The approver's address is looked up in this order: the <b>Email on their user account</b>
+(§5) first, then the employee master's email field. The HR admin pipeline table shows
+"(!) none" next to any approver with no address — fix those in System Admin.</p>
+<h3>9.3 Reminders — button and automatic</h3>
+<ol class="steps">
+<li><b>Manual:</b> Leave &amp; OT → HR admin → set the age threshold (default 24 h) →
+    <b>Send reminders now</b>. Each manager gets ONE digest listing all their waiting
+    items — not one mail per item.</li>
+<li><b>Automatic daily (recommended):</b> in your GitHub repo create the folder/file
+    <code>.github/workflows/reminders.yml</code> and paste the contents of
+    <code>.github_workflow_reminders.yml</code> from the package (it runs
+    <code>scripts/send_reminders.py</code> every day 09:00 Bangkok).</li>
+<li>In GitHub: repo → Settings → Secrets and variables → Actions → add
+    <code>DATABASE_URL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM</code>
+    (same values as the app secrets).</li>
+<li>Test it once: repo → Actions → "Daily approval reminders" → <b>Run workflow</b>.
+    The log lists every reminder sent. An item is re-reminded at most once per day.</li>
+</ol>
+
+<!-- ================= §10 ================= -->
+<h2 class="pb">§10 — Car Booking (Jira + Apps Script + LINE)</h2>
+<p>The booking page now lives INSIDE the HRM (Car Booking in the sidebar) — but the
+engine is the proven external stack you already built. This section wires them together.
+If your Apps Script hub from the earlier sessions is already deployed, you only need
+steps 6–7.</p>
+
+<div class="fig">
+<svg width="690" height="170" viewBox="0 0 690 170" xmlns="http://www.w3.org/2000/svg" font-family="Sarabun">
+  <defs><marker id="a4" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 z" fill="#8a93a6"/></marker></defs>
+  <rect x="8" y="50" width="170" height="70" rx="10" fill="#f6f1fb" stroke="#715091"/>
+  <text x="93" y="75" text-anchor="middle" font-size="11" font-weight="bold">HRM → Car Booking</text>
+  <text x="93" y="92" text-anchor="middle" font-size="9.5">map page (Leaflet/OSM)</text>
+  <text x="93" y="107" text-anchor="middle" font-size="9.5">staff picks route &amp; time</text>
+  <rect x="240" y="50" width="180" height="70" rx="10" fill="#eef6ff" stroke="#009ADE"/>
+  <text x="330" y="73" text-anchor="middle" font-size="11" font-weight="bold">Apps Script hub</text>
+  <text x="330" y="90" text-anchor="middle" font-size="9.5">free · holds the keys</text>
+  <text x="330" y="105" text-anchor="middle" font-size="9.5">Code.gs (in this package)</text>
+  <rect x="480" y="14" width="200" height="58" rx="10" fill="#fff" stroke="#0052CC" stroke-width="1.6"/>
+  <text x="580" y="37" text-anchor="middle" font-size="11" font-weight="bold" fill="#0052CC">Jira project AHA</text>
+  <text x="580" y="55" text-anchor="middle" font-size="9">Request → Confirm → On Process → Complete/Cancel</text>
+  <rect x="480" y="92" width="200" height="58" rx="10" fill="#fff" stroke="#06C755" stroke-width="1.6"/>
+  <text x="580" y="115" text-anchor="middle" font-size="11" font-weight="bold" fill="#06A04A">LINE @529aaynp</text>
+  <text x="580" y="133" text-anchor="middle" font-size="9">driver gets job + fuel estimate on Confirm</text>
+  <line x1="178" y1="85" x2="238" y2="85" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#a4)"/>
+  <line x1="420" y1="70" x2="478" y2="48" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#a4)"/>
+  <line x1="420" y1="100" x2="478" y2="118" stroke="#8a93a6" stroke-width="1.6" marker-end="url(#a4)"/>
+</svg>
+<figcaption>Figure 4 — booking flow. Google Sheet (settings/cars/drivers tabs) feeds fuel price, km/L and driver LINE ids — all editable without touching code.</figcaption>
+</div>
+
+<ol class="steps">
+<li><b>Jira:</b> you need space-admin on AHA. Work type <b>Car Booking</b> with your
+    22 custom fields exists already (customfield_15673–15694), and the workflow uses your
+    corrected status names: <b>Request → Confirm → On Process → Complete / Cancel</b>.</li>
+<li><b>Tokens:</b> Jira API token (id.atlassian.com → Security → Create API token) and
+    the LINE <b>channel access token</b> for @529aaynp (developers.line.biz). If the old
+    ones were ever pasted into a chat, create fresh ones now.</li>
+<li><b>Google Sheet:</b> tabs <code>settings</code> (row: <code>fuel_price_thb | 35</code>),
+    <code>cars</code> (A plate · B model · C seats · D active · E km/L),
+    <code>drivers</code> (A name · B LINE userId). Copy the Sheet ID from the URL.</li>
+<li><b>Apps Script:</b> script.google.com → New project → paste
+    <code>apps_script/Code.gs</code> from this package → Project Settings →
+    <b>Script properties</b>: <code>JIRA_EMAIL, JIRA_TOKEN, LINE_TOKEN, SHEET_ID</code>.
+    <div class="callout warn" style="margin-top:6px"><b>Fill the F map.</b> The file ships
+    with <code>customfield_XXXXX</code> placeholders because I can't read your live Jira
+    from here — your deployed copy from the earlier session already has them filled, so
+    copy that F block over, or re-list ids at
+    <code>https://ancagroup.atlassian.net/rest/api/3/field</code>. Keep your three fixes:
+    ONE combined "Pickup/Dest lat,lng" field; Purpose &amp; Priority as plain text;
+    Start/End via the isoDT()/hhmm() datetime helpers.</div></li>
+<li><b>Deploy:</b> Deploy → New deployment → <b>Web app</b> → Execute as <b>Me</b> →
+    Who has access <b>Anyone</b> → copy the <code>/exec</code> URL.
+    Then Jira Automation: when status → Confirm, send web request (GET) to
+    <code>&lt;exec URL&gt;?action=notify&amp;key={{issue.key}}</code>.
+    Optional: add a daily 07:00 time trigger on <code>dailySummary</code> for the
+    drivers' morning schedule.</li>
+<li><b>Connect the HRM:</b> Streamlit Secrets →
+<pre>[car_booking]
+apps_script_url = "https://script.google.com/macros/s/…/exec"
+jira_board_url = "https://ancagroup.atlassian.net/jira/core/projects/AHA/board"</pre></li>
+<li><b>Test:</b> open Car Booking in the HRM → book a trip to "U-Tapao" → a Jira issue
+    appears in <b>Request</b> → move it to <b>Confirm</b> with car+driver filled →
+    the driver's LINE receives the job with the fuel estimate
+    (distance ÷ that car's km/L × the Sheet's fuel price).</li>
+</ol>
+
+<!-- ================= §11 ================= -->
+<h2>§11 — Stationery ERP</h2>
+<div class="fig">
+<svg width="690" height="200" viewBox="0 0 690 200" xmlns="http://www.w3.org/2000/svg" font-family="Sarabun">
+  <defs><marker id="a5" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+    <path d="M0,0 L8,4 L0,8 z" fill="#8a93a6"/></marker></defs>
+  <text x="20" y="24" font-size="11.5" font-weight="bold" fill="#715091">A · Purchase order (company buys from OFFICEMATE)</text>
+  <g font-size="9.5">
+    <rect x="20" y="34" width="100" height="44" rx="8" fill="#eef6ff" stroke="#009ADE"/><text x="70" y="53" text-anchor="middle" font-weight="bold">Cart</text><text x="70" y="68" text-anchor="middle">staff picks items</text>
+    <rect x="150" y="34" width="100" height="44" rx="8" fill="#f6f1fb" stroke="#715091"/><text x="200" y="53" text-anchor="middle" font-weight="bold">Submit PO</text><text x="200" y="68" text-anchor="middle">PO-2606-001</text>
+    <rect x="280" y="34" width="100" height="44" rx="8" fill="#f6f1fb" stroke="#715091"/><text x="330" y="53" text-anchor="middle" font-weight="bold">Approve</text><text x="330" y="68" text-anchor="middle">manager/admin</text>
+    <rect x="410" y="34" width="110" height="44" rx="8" fill="#fff7ed" stroke="#e8a23d"/><text x="465" y="53" text-anchor="middle" font-weight="bold">Order @ ofm.co.th</text><text x="465" y="68" text-anchor="middle">record OFM order no.</text>
+    <rect x="550" y="34" width="100" height="44" rx="8" fill="#effaf2" stroke="#2da25e"/><text x="600" y="53" text-anchor="middle" font-weight="bold">Received</text><text x="600" y="68" text-anchor="middle">goods arrive</text>
+    <line x1="120" y1="56" x2="148" y2="56" stroke="#8a93a6" stroke-width="1.5" marker-end="url(#a5)"/>
+    <line x1="250" y1="56" x2="278" y2="56" stroke="#8a93a6" stroke-width="1.5" marker-end="url(#a5)"/>
+    <line x1="380" y1="56" x2="408" y2="56" stroke="#8a93a6" stroke-width="1.5" marker-end="url(#a5)"/>
+    <line x1="520" y1="56" x2="548" y2="56" stroke="#8a93a6" stroke-width="1.5" marker-end="url(#a5)"/>
+  </g>
+  <text x="20" y="118" font-size="11.5" font-weight="bold" fill="#715091">B · Reimbursement (staff already paid with their own money)</text>
+  <g font-size="9.5">
+    <rect x="20" y="128" width="130" height="44" rx="8" fill="#eef6ff" stroke="#009ADE"/><text x="85" y="147" text-anchor="middle" font-weight="bold">Claim + receipt photo</text><text x="85" y="162" text-anchor="middle">RB-2606-001</text>
+    <rect x="190" y="128" width="110" height="44" rx="8" fill="#f6f1fb" stroke="#715091"/><text x="245" y="147" text-anchor="middle" font-weight="bold">Approve</text><text x="245" y="162" text-anchor="middle">manager/admin</text>
+    <rect x="340" y="128" width="120" height="44" rx="8" fill="#effaf2" stroke="#2da25e"/><text x="400" y="147" text-anchor="middle" font-weight="bold">Finance pays</text><text x="400" y="162" text-anchor="middle">records transfer ref</text>
+    <line x1="150" y1="150" x2="188" y2="150" stroke="#8a93a6" stroke-width="1.5" marker-end="url(#a5)"/>
+    <line x1="300" y1="150" x2="338" y2="150" stroke="#8a93a6" stroke-width="1.5" marker-end="url(#a5)"/>
+  </g>
+</svg>
+<figcaption>Figure 5 — the two ERP flows, both fully audited. Tabs in the module map 1-to-1 to these boxes.</figcaption>
+</div>
+<table>
+<tr><th>Tab</th><th>Who (capability)</th><th>Does</th></tr>
+<tr><td>Catalog</td><td>everyone (erp.browse)</td><td>search by code/description/brand/category, real OFM photo, add to cart</td></tr>
+<tr><td>Cart &amp; submit</td><td>staff (erp.request / erp.reimburse)</td><td>review cart, free-text lines for uncatalogued items, submit PO; submit reimbursement with receipt photo/PDF</td></tr>
+<tr><td>My POs &amp; claims</td><td>staff</td><td>own history with statuses</td></tr>
+<tr><td>Approvals</td><td>manager/admin (erp.approve)</td><td>approve/reject POs and claims, see the receipt image inline</td></tr>
+<tr><td>Purchasing</td><td>admin (erp.purchase)</td><td>place the real order on ofm.co.th, record the OFM order no., mark received</td></tr>
+<tr><td>Finance</td><td>finance (erp.pay)</td><td>pay approved claims, record transfer reference</td></tr>
+<tr><td>Catalog admin</td><td>admin (erp.manage_catalog)</td><td>import/refresh the extraction CSV (§7.3)</td></tr>
+</table>
+
+<!-- ================= §12 ================= -->
+<h2>§12 — Roles &amp; permissions reference</h2>
+<table>
+<tr><th>Role</th><th>Meant for</th><th>Key powers (defaults — Super Admin can reshape)</th></tr>
+<tr><td>visitor</td><td>guests, applicants</td><td>Visitor Portal, job application, car booking</td></tr>
+<tr><td>viewer</td><td>every staff member</td><td>Report, Org Chart, My Profile, submit leave/OT, car booking, ERP browse/request/reimburse</td></tr>
+<tr><td>supervisor</td><td>line leaders</td><td>viewer + approve leave/OT at their level</td></tr>
+<tr><td>manager</td><td>department managers</td><td>supervisor + approve ERP POs/claims</td></tr>
+<tr><td>finance</td><td>accounting</td><td>viewer + pay reimbursements</td></tr>
+<tr><td>admin</td><td>HR team</td><td>full employee data (NO salary), candidate management, bulk upload, exports, leave admin + reminders, car admin, ERP purchasing &amp; catalog, users</td></tr>
+<tr><td>super_admin</td><td>you</td><td>everything, including salary view/edit</td></tr>
+</table>
+<div class="callout why"><b>Deliberate choices:</b> salary is super_admin-only (admin
+cannot see it, even in bulk upload — salary columns in an admin's file are ignored);
+PDPA-sensitive fields never appear in the External export; every change is in the audit
+log (System Admin).</div>
+
+<!-- ================= §13 ================= -->
+<h2>§13 — Maintenance &amp; troubleshooting</h2>
+<table>
+<tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr>
+<tr><td>Yellow "temporary SQLite" warning</td><td>DATABASE_URL not set</td><td>§6</td></tr>
+<tr><td>Data vanished after redeploy</td><td>was still on SQLite</td><td>§6, then re-upload MASTER once</td></tr>
+<tr><td>"Your login is not linked to an Emp. No."</td><td>account ↔ employee link missing</td><td>System Admin → Users → Link (§5)</td></tr>
+<tr><td>Approval chain empty / wrong</td><td>Mgr name doesn't match an active employee</td><td>fix the Mgr cell in Employee Data (or re-upload MASTER)</td></tr>
+<tr><td>"email skipped — SMTP not configured"</td><td>[smtp] secrets missing</td><td>§9.1</td></tr>
+<tr><td>Approver shows "(!) none" in HR admin</td><td>no email on the user account</td><td>System Admin → Users → Email</td></tr>
+<tr><td>Reminders not arriving daily</td><td>workflow file or GitHub secrets missing</td><td>§9.3; check repo → Actions logs</td></tr>
+<tr><td>Car booking page says hub not configured</td><td>[car_booking] secret missing</td><td>§10 step 6</td></tr>
+<tr><td>Booking fails "Jira 400"</td><td>F map ids wrong/placeholder</td><td>§10 step 4</td></tr>
+<tr><td>Driver got no LINE message</td><td>userId blank in drivers tab, or automation rule missing</td><td>§10 steps 3 &amp; 5</td></tr>
+<tr><td>ERP photo blank</td><td>item is premium/made-to-order (no retail CDN photo)</td><td>expected — catalogue note says "Contact admin for customization"</td></tr>
+<tr><td>App very slow first visit of the day</td><td>Supabase free tier waking up</td><td>expected on free; Pro removes it</td></tr>
+</table>
+<h3>Routine</h3>
+<ol class="steps">
+<li><b>Weekly:</b> HR admin pipeline — chase anything pending &gt; 3 days (the reminder
+    cron already nags daily).</li>
+<li><b>After each catalogue-extraction session:</b> re-import the master CSV (§7.3).</li>
+<li><b>Monthly:</b> Supabase dashboard → Database → check size; download a backup
+    (Pro does this daily automatically).</li>
+<li><b>When someone joins/leaves:</b> Employee Data first (so chains and org chart stay
+    true), then their user account in System Admin.</li>
+<li><b>Never</b> edit secrets into the code. Rotate any token that ever appeared in
+    a chat or screenshot.</li>
+</ol>
+
+<p class="small" style="margin-top:18px">End of manual · AMS HRM 2026-06-12 ·
+Built and tested with: MASTER V.6 import (190 rows), 3-level chain verified on real
+reporting lines, PO/reimbursement lifecycles, RBAC matrix, app boot. The Code.gs F map
+and your live Report page are the two items only you can finish — both flagged honestly
+above (§4, §10).</p>
+</body></html>

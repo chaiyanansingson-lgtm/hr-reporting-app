@@ -1,0 +1,25 @@
+Complete hr_app - replace your folder, commit, push, FULLY restart.
+
+WEEKLY DASHBOARD - the W2 "0.0%" bug is fixed.
+
+THE PROBLEM you saw: you computed Jun 26-W2 (the Working/OT hour bars showed
+correctly) but the OT% line and the OVERALL OT% card were stuck at 0.0%.
+CAUSE: your FY tracker has no real percentage for W2 yet (the cell is empty =
+0), and my previous build treated that 0 as a value to keep - so it hid the
+percentage that should have been computed from the real hours.
+
+THE FIX: percentages now follow this rule, in BOTH directions and ANY order:
+  - if the FY tracker has a REAL (non-zero) % for a week -> use it;
+  - if the FY tracker cell is empty/zero -> compute the % from the actual
+    hours (OT / (OT + Working));
+  - an empty FY cell can never wipe a percentage that was computed from hours.
+So computing W2 now shows the real OT% / Absenteeism% line, and the overall
+cards match the per-department lines.
+
+Still in place from the prior build: working/OT hours summed from the actual
+report rows; the compute-week crash fix + auto-select; the "Weeks per dept"
+slider fix; week-over-week charts removed.
+
+To populate a week: type its label (e.g. "Jun 26-W3"), set From/To to that
+week's dates, Compute & store. Re-seed the FY tracker any time to overlay
+official percentages where it has them.

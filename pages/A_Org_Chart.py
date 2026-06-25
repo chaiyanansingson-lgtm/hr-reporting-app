@@ -1,793 +1,297 @@
-"""
-Org Chart page — visualize the company structure.
+# pages/A_Org_Chart.py
+# Org chart: interactive chart (photos, vertical stacking, profile bubble)
+# + in-app PROFILE OPENER (search -> role-gated full profile)
+# + PRINT BY BUSINESS UNIT (A4 document: legend top-left, version/
+#   proposed-by/approved-by block bottom-right).
+import datetime as dt
+import html as _html
+import json
+import pathlib
 
-Three views:
-- Tree view (interactive expandable): traverse from a chosen root downward
-- Table view: flat list with a "reports to" column, easy to filter
-- By department: group employees by Dept by Location
-
-Built from the `employees_extended` table populated by the Employee MASTER
-import. Uses the manager_emp_no column to resolve hierarchy.
-"""
 import streamlit as st
-import pandas as pd
-import sys
-from pathlib import Path
+st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+from lib import theme as _theme
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+from lib.auth import require_capability, has_capability, current_user
+from lib import employee_db as edb
+from lib import employee_schema as schema
 
-from lib import db
-from lib.page_utils import require_login, page_header
-from lib.i18n import t
+_theme.inject()
+require_capability("orgchart.view")
 
-st.set_page_config(page_title="Org Chart", page_icon="🌳", layout="wide")
-require_login(capability="orgchart.view")
-page_header(title_key="org_chart_title", subtitle_key="org_chart_subtitle")
+st.title("🌳 ผังองค์กร / Organisation Chart")
 
-# ---------------------------------------------------------------------------
-# Load
-# ---------------------------------------------------------------------------
-employees = db.list_employees_with_extended()
-if not employees:
-    st.warning(t("no_org_data"))
-    st.stop()
+act = edb.list_records("active")
 
-# Build lookup tables
-by_no = {e["emp_no"]: e for e in employees}
-children_of: dict[str, list[dict]] = {}
-for e in employees:
-    mgr = e.get("manager_emp_no") or ""
-    children_of.setdefault(mgr, []).append(e)
-# Sort children by emp_name
-for k in children_of:
-    children_of[k].sort(key=lambda x: (x.get("emp_name") or ""))
-
-# Roots = anyone whose manager_emp_no is empty or doesn't resolve to a known emp
-roots = []
-for e in employees:
-    mgr = e.get("manager_emp_no") or ""
-    if not mgr or mgr not in by_no:
-        roots.append(e)
-roots.sort(key=lambda x: (-(x.get("level") or 0), x.get("emp_name") or ""))
-
-
-# ---------------------------------------------------------------------------
-# Display helpers
-# ---------------------------------------------------------------------------
-
-def _emp_chip(e: dict) -> str:
-    """Inline 1-line summary of an employee."""
-    nick = f" ({e['nickname']})" if e.get("nickname") else ""
-    title = e.get("title") or ""
-    role_badge = ""
-    if e.get("is_mgr_role"):
-        color = {"Mgr.": "#715091", "Sup.": "#009ADE", "Leader": "#E31D93"}.get(
-            e.get("is_mgr_role", ""), "#6B7280")
-        role_badge = (f"&nbsp;<span style='background:{color};color:white;"
-                       f"padding:1px 8px;border-radius:4px;font-size:0.75rem;'>"
-                       f"{e['is_mgr_role']}</span>")
-    return (f"<b>{e.get('emp_name','')}</b>{nick}{role_badge}"
-             f"<br><small style='color:#6B7280'>{title} · "
-             f"{e.get('dept_by_location') or ''} · #{e['emp_no']}</small>")
-
-
-def _render_tree_branch(emp: dict, depth: int = 0, max_depth: int = 8):
-    """Render an expandable branch starting at this employee."""
-    if depth > max_depth:
-        return
-
-    reports = children_of.get(emp["emp_no"], [])
-    label_html = _emp_chip(emp)
-    n_reports = len(reports)
-
-    # Use expander when there are reports; otherwise just render the chip
-    if n_reports:
-        with st.expander(f"  {emp.get('emp_name','')}  ·  {emp.get('title') or ''}  "
-                          f"({n_reports} {t('direct_reports')})",
-                          expanded=(depth == 0)):
-            st.markdown(label_html, unsafe_allow_html=True)
-            st.markdown("")
-            for child in reports:
-                _render_tree_branch(child, depth + 1, max_depth)
-    else:
-        st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;• {label_html}", unsafe_allow_html=True)
-
-
-# ---------------------------------------------------------------------------
-# View tabs
-# ---------------------------------------------------------------------------
-
-tab_tree, tab_visual, tab_table, tab_dept = st.tabs([
-    f"🌳 {t('org_view_tree')}",
-    f"🎨 Visual Chart",
-    f"📋 {t('org_view_table')}",
-    f"🏢 {t('org_view_dept')}",
-])
-
-# ── Tree view ──
-with tab_tree:
-    st.markdown(f"#### Top-of-org / starting points")
-    if not roots:
-        st.info("No org tree root found (every employee has a manager who is also an employee).")
-    else:
-        # Let user pick which root to expand
-        root_options = {f"{r['emp_name']} — {r.get('title') or '?'}  (#{r['emp_no']})": r["emp_no"]
-                         for r in roots}
-        # Also offer "all roots"
-        all_roots_label = f"⭐  All {len(roots)} top-level people"
-        pick = st.selectbox("Start from", [all_roots_label] + list(root_options.keys()))
-
-        starts = roots if pick == all_roots_label else [by_no[root_options[pick]]]
-
-        max_depth = st.slider("Maximum depth to expand", 1, 8, 4)
-
-        for r in starts:
-            _render_tree_branch(r, depth=0, max_depth=max_depth)
-
-
-# ── Visual Chart view (graphviz - Visio-style with photos, dept headers, color schemes) ──
-with tab_visual:
-    import os, tempfile, html as _html
-    import subprocess, base64, mimetypes, re as _re
-    st.markdown("#### 🎨 Visual organizational chart")
-
-    # ── Helpers for Visio-style mode (colored title band + avatar + name) ──
-    def _initials_from_name(name: str) -> str:
-        """'Ronnachai T.' → 'RT'   'Nicholas Doyle' → 'ND'   'Anan' → 'AN'"""
-        if not name:
-            return "??"
-        parts = [p for p in name.replace(".", "").split() if p]
-        if len(parts) >= 2:
-            return (parts[0][:1] + parts[1][:1]).upper()
-        return (parts[0][:2] if parts else "??").upper()
-
-    def _find_team_clusters(visible_emps_local, children_of_local, visible_set):
-        """A 'team' = a parent whose visible direct children are ALL leaves
-        (no further visible descendants) AND number ≥ 2. Used to stack
-        leaf workers vertically under their direct supervisor."""
-        teams = {}  # parent_emp_no -> ordered list of child_emp_no
-        for parent in visible_emps_local:
-            pno = parent["emp_no"]
-            kids = [c for c in children_of_local.get(pno, []) if c["emp_no"] in visible_set]
-            if len(kids) < 2:
-                continue
-            all_leaves = all(
-                not any(gc["emp_no"] in visible_set
-                        for gc in children_of_local.get(k["emp_no"], []))
-                for k in kids
-            )
-            if all_leaves:
-                teams[pno] = [k["emp_no"] for k in kids]
-        return teams
-
-    # ── Render helper: inline photos as data: URIs so the browser can display them ──
-    # The default `st.graphviz_chart` leaves <image xlink:href="/tmp/..."/> references
-    # pointing at server-side file paths, which the browser cannot load. We call the
-    # `dot` binary ourselves, then post-process the SVG to replace each absolute file
-    # path with a base64-encoded data URI of the file's bytes.
-    def _render_dot_with_inline_photos(dot_source: str) -> str:
-        proc = subprocess.run(
-            ["dot", "-Tsvg"],
-            input=dot_source.encode("utf-8"),
-            capture_output=True,
-            check=True,
-            timeout=30,
-        )
-        svg = proc.stdout.decode("utf-8", errors="replace")
-
-        def _inline(match):
-            attr_quote = match.group(1)
-            href = match.group(2)
-            if href.startswith(("http://", "https://", "data:")):
-                return match.group(0)
-            if not os.path.isabs(href) or not os.path.exists(href):
-                return match.group(0)
-            try:
-                with open(href, "rb") as f:
-                    data = f.read()
-                mime = mimetypes.guess_type(href)[0] or "image/jpeg"
-                b64 = base64.b64encode(data).decode("ascii")
-                return f'xlink:href={attr_quote}data:{mime};base64,{b64}{attr_quote}'
-            except Exception:
-                return match.group(0)
-
-        svg = _re.sub(r'xlink:href=(["\'])([^"\']+)\1', _inline, svg)
-        # Strip explicit width/height so CSS can make the SVG responsive
-        svg = _re.sub(r'<svg([^>]*?)\swidth="[^"]+"', r'<svg\1', svg, count=1)
-        svg = _re.sub(r'<svg([^>]*?)\sheight="[^"]+"', r'<svg\1', svg, count=1)
-        return svg
-
-    st.caption(
-        "Visio-style top-down hierarchy with employee photos, name (Surname + first letter), "
-        "position, level, and reporting lines (solid = direct, dashed = dotted-line). "
-        "Boxes are color-coded — switch the color scheme below to view by **role** or **department**. "
-        "Admin can customize the colors in **⚙️ Settings → 🎨 Org Chart Style**."
-    )
-
-    # ------ Helper: format short name "Nicholas D. (Nicky)"
-    def _format_short_name(emp_name: str, nickname: str) -> str:
-        # Strip prefix
-        nm = (emp_name or "").strip()
-        for px in ("Mr.", "Ms.", "Mrs.", "Miss "):
-            if nm.startswith(px):
-                nm = nm[len(px):].strip()
-                break
-        parts = nm.split()
-        if len(parts) >= 2:
-            first = " ".join(parts[:-1])  # everything except last word
-            last_initial = parts[-1][0].upper() + "."
-            short = f"{first} {last_initial}"
+# ====================================================== profile opener
+with st.expander("🔎 เปิดโปรไฟล์พนักงาน / Open staff profile", expanded=False):
+    q = st.text_input("ค้นหา (รหัส / ชื่อ / นามสกุล / ชื่อเล่น) — วางรหัสที่"
+                      "คัดลอกจากการ์ดในผังได้เลย / Search by ID, name, "
+                      "surname or nickname — paste the Emp. No. copied from "
+                      "a chart card", key="prof_q")
+    sel_rec = None
+    if q.strip():
+        ql = q.strip().lower()
+        hits = [r for r in act if ql in str(r.get("emp_no", "")).lower()
+                or ql in str(r.get("emp_name_en", "")).lower()
+                or ql in str(r.get("emp_name_th", "")).lower()
+                or ql in str(r.get("nickname", "")).lower()]
+        if not hits:
+            st.caption("ไม่พบ / no match")
+        elif len(hits) == 1:
+            sel_rec = hits[0]
         else:
-            short = nm
-        nick = (nickname or "").strip()
-        if nick:
-            short = f"{short} ({nick})"
-        return short
+            pid = st.selectbox("เลือก / Pick", [r["id"] for r in hits],
+                               format_func=lambda i: next(
+                                   f"{r['emp_no']} • {r.get('emp_name_en')} "
+                                   f"({r.get('nickname') or '-'})"
+                                   for r in hits if r["id"] == i),
+                               key="prof_pick")
+            sel_rec = edb.get_record(employee_id=pid)
 
-    # ------ Filters
-    fc1, fc2, fc3 = st.columns([2, 2, 2])
-    root_picker_options = {f"⭐ Whole company ({len(employees)} people)": None}
-    for r in sorted(roots, key=lambda x: -(x.get("level") or 0)):
-        root_picker_options[f"{r['emp_name']} — {r.get('title') or '?'}"] = r["emp_no"]
-    for e in sorted(employees, key=lambda x: x.get("emp_name") or ""):
-        if e.get("is_mgr_role") in ("Mgr.", "Sup."):
-            label = f"  ↳ {e['emp_name']} — {e.get('title') or '?'} ({e.get('is_mgr_role')})"
-            if e["emp_no"] not in [v for v in root_picker_options.values() if v]:
-                root_picker_options[label] = e["emp_no"]
-
-    chart_root_label = fc1.selectbox(
-        "Show branch starting from", list(root_picker_options.keys()),
-        help="Pick the company root or a specific manager to show only their team.",
-    )
-    chart_root = root_picker_options[chart_root_label]
-
-    chart_max_depth = fc2.slider("Levels deep", 1, 10, 5)
-
-    color_scheme = fc3.selectbox(
-        "Color scheme",
-        ["By role (Mgr/Sup/Leader)", "By department"],
-        help="Pick how box colors are assigned. Admin defines the colors in Settings.",
-    )
-
-    # ------ Display options
-    co1, co2, co3, co4 = st.columns(4)
-    show_photos = co1.toggle("Show photos", value=True,
-                              help="Embed employee photos in each box (uploaded by admin in Employees page)")
-    show_titles = co2.toggle("Show titles", value=True)
-    show_dept_headers = co3.toggle("Show department headers", value=True,
-                                    help="Wrap employees in same dept inside a labeled cluster (Visio-style)")
-    layout_direction = co4.selectbox(
-        "Layout",
-        ["📋 Visio-style (team columns)", "Top-down (wide)", "Left-right (tall)"],
-        index=0,
-        help=("Visio-style: colored title bars, avatars, and worker teams stacked vertically (recommended).\n"
-              "Top-down: classic tree, spreads horizontally — good for small teams.\n"
-              "Left-right: tree on its side — good for very deep hierarchies."),
-    )
-    visio_style = layout_direction.startswith("📋")
-    rankdir = "LR" if layout_direction.startswith("Left") else "TB"
-
-    # ------ Compute visible set (root + descendants up to depth)
-    def _walk_down(emp_no: str, depth: int, max_d: int, accumulator: set):
-        if depth > max_d or emp_no in accumulator:
-            return
-        accumulator.add(emp_no)
-        for child in children_of.get(emp_no, []):
-            _walk_down(child["emp_no"], depth + 1, max_d, accumulator)
-
-    visible: set[str] = set()
-    if chart_root is None:
-        for r in roots:
-            _walk_down(r["emp_no"], 0, chart_max_depth, visible)
-    else:
-        _walk_down(chart_root, 0, chart_max_depth, visible)
-
-    visible_emps = [e for e in employees if e["emp_no"] in visible]
-
-    if not visible_emps:
-        st.warning("No employees to display with current filters.")
-    else:
-        st.caption(f"Rendering **{len(visible_emps)}** employees, max **{chart_max_depth}** levels deep.")
-
-        # ------ Resolve color rules
-        ROLE_DEFAULTS = {
-            "Mgr.":     {"fill": "#715091", "font": "#FFFFFF", "border": "#4A2F62"},
-            "Sup.":     {"fill": "#009ADE", "font": "#FFFFFF", "border": "#0073A8"},
-            "Leader":   {"fill": "#E31D93", "font": "#FFFFFF", "border": "#A8126B"},
-            "(staff)":  {"fill": "#F3F4F6", "font": "#1F2937", "border": "#D1D5DB"},
-        }
-        admin_role_colors = db.get_org_chart_colors("role")
-        admin_dept_colors = db.get_org_chart_colors("dept")
-
-        DEFAULT_DEPT_PALETTE = [
-            "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899",
-            "#14B8A6", "#F97316", "#6366F1", "#84CC16", "#06B6D4", "#A855F7",
-        ]
-
-        def _color_for_emp(e: dict) -> dict:
-            """Return {fill, font, border} for an employee, based on the active scheme."""
-            if color_scheme.startswith("By role"):
-                role = e.get("is_mgr_role") or "(staff)"
-                if role in admin_role_colors and admin_role_colors[role].get("fill"):
-                    return admin_role_colors[role]
-                return ROLE_DEFAULTS.get(role, ROLE_DEFAULTS["(staff)"])
+    if sel_rec:
+        rec = sel_rec
+        is_super = has_capability("employee.view_salary")
+        PREVIEW_KEYS = ["emp_no", "emp_name_en", "emp_name_th", "nickname",
+                        "title", "dept_location", "mobile", "personal_email",
+                        "mgr_name"]
+        PREVIEW_LABELS = {
+            "emp_no": "รหัสพนักงาน / Emp No.",
+            "emp_name_en": "ชื่อ-สกุล / Name (EN)",
+            "emp_name_th": "ชื่อ-สกุล (ไทย) / Name (TH)",
+            "nickname": "ชื่อเล่น / Nickname",
+            "title": "ตำแหน่ง / Position",
+            "dept_location": "แผนก / Department",
+            "mobile": "โทรศัพท์ / Phone",
+            "personal_email": "อีเมล / Email",
+            "mgr_name": "ผู้บังคับบัญชา / Manager"}
+        with st.container(border=True):
+            c1, c2 = st.columns([1, 4])
+            if rec.get("photo"):
+                c1.image(bytes(rec["photo"]), width=110)
+            c2.subheader(f"{rec.get('emp_name_en')} "
+                         f"({rec.get('nickname') or '-'})")
+            c2.caption(f"{rec.get('title') or ''} • "
+                       f"{rec.get('dept_location') or ''}")
+            for k in PREVIEW_KEYS:
+                if rec.get(k):
+                    a, b = st.columns([1, 2])
+                    a.markdown(f"**{PREVIEW_LABELS[k]}**")
+                    b.write(rec.get(k))
+            if is_super:
+                st.divider()
+                st.markdown("#### 🔒 PDPA & เงินเดือน (เฉพาะ Super Admin) / "
+                            "PDPA & salary (Super Admin only)")
+                _shown = set(PREVIEW_KEYS)
+                sens = [k for k in (list(schema.PDPA_KEYS)
+                                    + list(schema.SALARY_KEYS))
+                        if rec.get(k) and k not in _shown]
+                if sens:
+                    for k in sens:
+                        fld = schema.BY_KEY.get(k)
+                        lbl = (f"{fld.en} / {fld.th}" if fld else k)
+                        a, b = st.columns([1, 2])
+                        a.markdown(f"**{lbl}**")
+                        b.write(rec.get(k))
+                else:
+                    st.caption("ไม่มีข้อมูลในกลุ่มนี้ / none recorded")
             else:
-                # By department
-                dept = (e.get("dept_by_location") or "").strip() or "(no dept)"
-                if dept in admin_dept_colors and admin_dept_colors[dept].get("fill"):
-                    return admin_dept_colors[dept]
-                # Auto-assign from palette
-                idx = sum(ord(c) for c in dept) % len(DEFAULT_DEPT_PALETTE)
-                fill = DEFAULT_DEPT_PALETTE[idx]
-                # Compute readable text color
-                h = fill.lstrip("#")
-                lum = (0.299 * int(h[0:2], 16) + 0.587 * int(h[2:4], 16) + 0.114 * int(h[4:6], 16)) / 255
-                return {"fill": fill, "font": "#FFFFFF" if lum < 0.6 else "#1F2937", "border": fill}
+                st.info("ข้อมูล PDPA และเงินเดือนแสดงเฉพาะ Super Admin / "
+                        "PDPA and salary details are visible to Super Admin "
+                        "only.")
 
-        # ------ Write photos to a temp directory (graphviz needs file paths)
-        photo_paths: dict[str, str] = {}
-        temp_dir = None
-        if show_photos:
-            temp_dir = tempfile.mkdtemp(prefix="orgphotos_")
-            for e in visible_emps:
-                blob = db.get_employee_photo(e["emp_no"])
-                if blob:
-                    p = os.path.join(temp_dir, f"emp_{e['emp_no']}.jpg")
-                    try:
-                        with open(p, "wb") as f:
-                            f.write(blob)
-                        photo_paths[e["emp_no"]] = p
-                    except Exception:
-                        pass
+# ====================================================== interactive chart
+html = pathlib.Path("assets/AMS-org-chart-v2.html").read_text(encoding="utf-8")
+photos = json.dumps(edb.photos_as_data_uris(), ensure_ascii=False)
+empmap = json.dumps(edb.orgchart_emp_map(), ensure_ascii=False)
+html = html.replace("/*__PHOTOS_JSON__*/{}/*__END_PHOTOS_JSON__*/", photos)
+html = html.replace("/*__EMPMAP_JSON__*/{}/*__END_EMPMAP_JSON__*/", empmap)
+st.components.v1.html(html, height=860, scrolling=True)
+st.caption("คลิกการ์ดเพื่อดูข้อมูลย่อ • ปุ่มในการ์ดจะคัดลอกรหัสไปวางในช่อง "
+           "'เปิดโปรไฟล์พนักงาน' ด้านบน • ทีมใหญ่เรียงแนวตั้ง / Click a card "
+           "for a preview; the card button copies the ID for the opener "
+           "above; large teams stack vertically.")
 
-        # ------ Build the DOT
-        if visio_style:
-            # Outer node carries the rounded shape + role-color fill.
-            # penwidth=0 hides the node's stroke so we don't get a thin halo.
-            # Small margins keep the table snug against the rounded edge.
-            node_defaults = ('  node [shape=box, style="rounded,filled", fontname="Arial", '
-                              'margin="0.04,0.02", penwidth=0];')
-        else:
-            node_defaults = ('  node [shape=box, style="filled,rounded", fontname="Arial", '
-                              'margin="0.10,0.08", penwidth=1.5];')
+# ====================================================== EXPORT PANEL
+# One consolidated export panel. Pick a scope (report line / business unit /
+# whole company), set the title-block fields, then either generate an image
+# (PNG / JPG / PDF) or print/save-as-PDF an exact copy of the interactive chart.
+import base64 as _b64
+from lib import orgchart_export as _oce
 
-        dot_lines = [
-            'digraph OrgChart {',
-            f'  rankdir={rankdir};',
-            '  graph [splines=ortho, nodesep=0.30, ranksep=0.50, bgcolor="transparent", fontname="Arial"];',
-            node_defaults,
-            '  edge [color="#6B7280", arrowsize=0.6, penwidth=1.2];',
-            '  compound=true;',
-            '',
-        ]
+st.divider()
+st.subheader("📤 ส่งออกผังองค์กร / Export organisation chart")
+st.caption(
+    "เลือกสายบังคับบัญชาที่ต้องการ แล้วส่งออกเป็นรูป (PNG/JPG/PDF) หรือพิมพ์/"
+    "บันทึกเป็น PDF ที่หน้าตาเหมือนผังด้านบนทุกประการ • Pick a report line and "
+    "export it as an image, or print / save-as-PDF an exact copy of the chart "
+    "above. Selecting a person includes their whole team (all levels) plus "
+    "their one top manager — exactly like “Expand all”.")
 
-        def _node_label(e: dict) -> str:
-            """Build an HTML-like graphviz label with photo + name + title + level."""
-            short_name = _format_short_name(e.get("emp_name") or "?", e.get("nickname") or "")
-            title = e.get("title") or ""
-            level = e.get("level")
-            role = e.get("is_mgr_role") or ""
 
-            # Use HTML label syntax (graphviz supports <TABLE>...</TABLE>)
-            rows = []
-            # Photo row (if available)
-            if show_photos and e["emp_no"] in photo_paths:
-                p = photo_paths[e["emp_no"]].replace("\\", "/")
-                rows.append(
-                    f'<TR><TD FIXEDSIZE="TRUE" WIDTH="62" HEIGHT="62" '
-                    f'CELLPADDING="0"><IMG SRC="{p}" SCALE="TRUE"/></TD></TR>'
-                )
-            # Name row
-            rows.append(
-                f'<TR><TD CELLPADDING="2"><FONT POINT-SIZE="10"><B>'
-                f'{_html.escape(short_name)}</B></FONT></TD></TR>'
-            )
-            # Title row
-            if show_titles and title:
-                rows.append(
-                    f'<TR><TD CELLPADDING="1"><FONT POINT-SIZE="9">'
-                    f'{_html.escape(title)}</FONT></TD></TR>'
-                )
-            # Level + role row (small subtle line)
-            badge_bits = []
-            if level is not None and level != "":
-                badge_bits.append(f"L{level}")
-            if role:
-                badge_bits.append(role)
-            if badge_bits:
-                rows.append(
-                    f'<TR><TD CELLPADDING="1"><FONT POINT-SIZE="8" COLOR="#666666">'
-                    f'{_html.escape(" · ".join(str(b) for b in badge_bits))}</FONT></TD></TR>'
-                )
-            html_label = f'<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">{"".join(rows)}</TABLE>>'
-            return html_label
+def _photo_bytes(r):
+    b = r.get("photo")
+    if not b:
+        return None
+    return bytes(b) if not isinstance(b, (bytes, bytearray)) else bytes(b)
 
-        def _visio_node_label(e: dict, fill: str) -> str:
-            """Visio-style label: colored title band on top, avatar (photo or
-            initials) on left, name + nickname/level on right.
 
-            CRITICAL: this label has NO border, NO rounded style, NO BGCOLOR
-            on the TABLE itself. The OUTER NODE (shape=box, style=rounded,filled,
-            fillcolor=role_color) provides the rounded shape and the colored
-            top half. The white name cell explicitly covers the bottom-right
-            portion with BGCOLOR="#FFFFFF". This avoids the "halo" gap that
-            STYLE=ROUNDED on a TABLE creates between square cells and rounded
-            corners.
-            """
-            short_name = _format_short_name(e.get("emp_name") or "?", e.get("nickname") or "")
-            title_text = (e.get("title") or e.get("is_mgr_role") or "Staff")[:42]
-            nickname = e.get("nickname") or ""
-            level = e.get("level")
+# _key-keyed photo maps (orgchart_export keys everything by cleaned lower name)
+_photos_bytes = {_oce._key(r): _photo_bytes(r) for r in act if r.get("photo")}
+_photos_uri = {
+    _oce._key(r): "data:image/jpeg;base64," + _b64.b64encode(_photo_bytes(r)).decode()
+    for r in act if r.get("photo")}
 
-            # Avatar cell: photo if available, else initials. NO BGCOLOR —
-            # inherits role color from the outer node fill.
-            if show_photos and e["emp_no"] in photo_paths:
-                p = photo_paths[e["emp_no"]].replace("\\", "/")
-                avatar_cell = (
-                    f'<TD FIXEDSIZE="TRUE" WIDTH="46" HEIGHT="46" CELLPADDING="0">'
-                    f'<IMG SRC="{p}" SCALE="TRUE"/></TD>'
-                )
-            else:
-                initials = _initials_from_name(e.get("emp_name") or "")
-                avatar_cell = (
-                    f'<TD FIXEDSIZE="TRUE" WIDTH="46" HEIGHT="46" ALIGN="CENTER" VALIGN="MIDDLE">'
-                    f'<FONT COLOR="#FFFFFF" POINT-SIZE="11"><B>'
-                    f'{_html.escape(initials)}</B></FONT></TD>'
-                )
+# ---- scope picker -------------------------------------------------------
+_scope_label = st.radio(
+    "ขอบเขต / Scope",
+    ["📋 สายบังคับบัญชา / Report line",
+     "🏢 หน่วยงาน / Business unit",
+     "🌐 ทั้งบริษัท / Whole company"],
+    horizontal=True, key="org_exp_scope")
 
-            sub_bits = []
-            if nickname:
-                sub_bits.append(f"({_html.escape(nickname)})")
-            if level not in (None, ""):
-                sub_bits.append(f"L{level}")
-            sub_text = " · ".join(sub_bits)
-            sub_row = (
-                f'<BR ALIGN="LEFT"/><FONT POINT-SIZE="7" COLOR="#6B7280">{sub_text}</FONT>'
-                if sub_text else ''
-            )
+scope = ("report_line" if _scope_label.startswith("📋")
+         else "unit" if _scope_label.startswith("🏢") else "company")
 
-            title_row = ''
-            if show_titles:
-                title_row = (
-                    f'<TR><TD COLSPAN="2" CELLPADDING="5" ALIGN="CENTER">'
-                    f'<FONT COLOR="#FFFFFF" POINT-SIZE="8"><B>'
-                    f'{_html.escape(title_text)}</B></FONT></TD></TR>'
-                )
+focus_emp_no = None
+include_manager = True
+unit = None
 
-            # Transparent TABLE — outer node provides rounded fill
-            return (
-                f'<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">'
-                f'{title_row}'
-                f'<TR>{avatar_cell}'
-                f'<TD BGCOLOR="#FFFFFF" ALIGN="LEFT" CELLPADDING="6">'
-                f'<FONT POINT-SIZE="9" COLOR="#1F2937"><B>'
-                f'{_html.escape(short_name)}</B></FONT>'
-                f'{sub_row}'
-                f'</TD></TR></TABLE>>'
-            )
+if scope == "report_line":
+    _emp_sorted = sorted(act, key=lambda r: (r.get("emp_name_en") or "").lower())
+    _label_by_no = {}
+    for r in _emp_sorted:
+        nm = _oce.clean(r.get("emp_name_en"))
+        nick = (r.get("nickname") or "").strip()
+        ttl = (r.get("title") or "").strip()
+        _label_by_no[r["emp_no"]] = (
+            f"{r['emp_no']} • {nm}" + (f" ({nick})" if nick else "")
+            + (f" — {ttl}" if ttl else ""))
+    c1, c2 = st.columns([3, 2])
+    focus_emp_no = c1.selectbox(
+        "เลือกบุคคล (จะรวมลูกน้องทุกระดับ) / Pick a person "
+        "(includes every level below them)",
+        options=[r["emp_no"] for r in _emp_sorted],
+        format_func=lambda no: _label_by_no.get(no, str(no)),
+        key="org_exp_focus")
+    include_manager = c2.checkbox(
+        "รวมหัวหน้า 1 ระดับด้านบน / Include their one top manager",
+        value=True, key="org_exp_incmgr")
+elif scope == "unit":
+    _units = sorted({(r.get("dept_location") or "—") for r in act})
+    unit = st.selectbox("หน่วยงาน / Business unit", _units, key="org_exp_unit")
 
-        def _emit_node(e: dict, indent: str = "  ") -> str:
-            colors = _color_for_emp(e)
-            if visio_style:
-                # In Visio mode the outer NODE must carry the role color (rounded fill).
-                # Setting color=fill makes the node's border invisible (no halo line).
-                return (
-                    f'{indent}"{e["emp_no"]}" [label={_visio_node_label(e, colors["fill"])}, '
-                    f'fillcolor="{colors["fill"]}", color="{colors["fill"]}"];'
-                )
-            return (
-                f'{indent}"{e["emp_no"]}" [label={_node_label(e)}, '
-                f'fillcolor="{colors["fill"]}", color="{colors["border"]}", '
-                f'fontcolor="{colors["font"]}"];'
-            )
+# ---- title-block fields -------------------------------------------------
+b1, b2 = st.columns(2)
+ver = b1.text_input("Version", value=f"Rev.{dt.date.today():%Y%m%d}",
+                    key="org_exp_ver")
+eff_date = b2.date_input("Effective date / วันที่มีผล", dt.date.today(),
+                         key="org_exp_eff")
+p1, p2 = st.columns(2)
+proposed = p1.text_input("Proposed by / จัดทำโดย",
+                         value="Chaiyanan Singson (HR Manager)",
+                         key="org_exp_prop")
+approved = p2.text_input("Approved by / อนุมัติโดย",
+                         value="Nicholas Doyle (General Manager)",
+                         key="org_exp_appr")
 
-        # Decide layout: Visio-style team clusters, dept clusters, or flat
-        if visio_style:
-            # Detect "teams" — parents whose visible children are all leaves
-            teams = _find_team_clusters(visible_emps, children_of, visible)
-            team_member_set: set[str] = set()
-            for members in teams.values():
-                team_member_set.update(members)
 
-            # 1) Emit nodes NOT in any team as standalone
-            for emp in visible_emps:
-                if emp["emp_no"] not in team_member_set:
-                    dot_lines.append(_emit_node(emp))
+def _scope_kwargs():
+    return dict(unit=unit, focus_emp_no=focus_emp_no,
+                include_manager=include_manager)
 
-            # 2) Emit each team as an invisible cluster with a vertical chain
-            #    of invisible edges (forces members into a single column)
-            for i, (parent_no, members) in enumerate(teams.items()):
-                dot_lines.append(f'  subgraph cluster_team_{i} {{')
-                dot_lines.append('    style=invis;')
-                for member_no in members:
-                    member_emp = by_no[member_no]
-                    dot_lines.append(_emit_node(member_emp, indent="    "))
-                if len(members) >= 2:
-                    chain = ' -> '.join(f'"{m}"' for m in members)
-                    dot_lines.append(f'    {chain} [style=invis];')
-                dot_lines.append('  }')
 
-        elif show_dept_headers:
-            # Group visible employees by department
-            by_dept: dict[str, list[dict]] = {}
-            for e in visible_emps:
-                d = (e.get("dept_by_location") or "").strip() or "(no dept)"
-                by_dept.setdefault(d, []).append(e)
+def _fname_stub():
+    if scope == "report_line":
+        nm = _oce.clean(next((r.get("emp_name_en") for r in act
+                              if r["emp_no"] == focus_emp_no), "person"))
+        return "ReportLine_" + nm.replace(" ", "_")[:24]
+    if scope == "unit":
+        return "Unit_" + str(unit).replace("/", "-").replace(" ", "_")[:24]
+    return "WholeCompany"
 
-            for i, (dept, members) in enumerate(sorted(by_dept.items())):
-                # Cluster header
-                dept_color = admin_dept_colors.get(dept, {}).get("fill", "#F3F4F6")
-                dept_font = admin_dept_colors.get(dept, {}).get("font", "#1F2937")
-                # Use a slightly darker variant for the cluster bg if main is light
-                dot_lines.append(f'  subgraph cluster_dept_{i} {{')
-                dot_lines.append(f'    label=<<B>{_html.escape(dept)}</B>>;')
-                dot_lines.append(f'    style="rounded,filled";')
-                dot_lines.append(f'    fillcolor="#FAFBFC";')
-                dot_lines.append(f'    color="{dept_color}";')
-                dot_lines.append(f'    fontcolor="{dept_font}";')
-                dot_lines.append(f'    fontsize=12;')
-                dot_lines.append(f'    margin=12;')
-                for emp in members:
-                    dot_lines.append(_emit_node(emp, indent="    "))
-                dot_lines.append('  }')
-        else:
-            for emp in visible_emps:
-                dot_lines.append(_emit_node(emp))
 
-        # ------ Edges: solid lines for direct manager, dashed for dotted-line
-        for e in visible_emps:
-            mgr = e.get("manager_emp_no")
-            if mgr and mgr in visible:
-                dot_lines.append(f'  "{mgr}" -> "{e["emp_no"]}";')
-            # Dotted-line managers
-            dotted = db.get_dotted_managers(e["emp_no"])
-            for dm in dotted:
-                if dm and dm in visible:
-                    dot_lines.append(
-                        f'  "{dm}" -> "{e["emp_no"]}" '
-                        f'[style=dashed, color="#9CA3AF", arrowsize=0.5, '
-                        f'constraint=false, penwidth=1.0];'
-                    )
+# ---- preview of what will be exported -----------------------------------
+try:
+    _plan_preview = _oce.people_for_scope(act, scope, **_scope_kwargs())
+    _n = len(_plan_preview["members"])
+    if scope == "report_line" and focus_emp_no:
+        _focus_nm = _oce.clean(next((r.get("emp_name_en") for r in act
+                               if r["emp_no"] == focus_emp_no), ""))
+        _mgr_txt = (f" + หัวหน้า / manager: {_oce.clean(_plan_preview['ctx_key'].title())}"
+                    if _plan_preview.get("ctx_key") and include_manager else "")
+        st.info(f"จะส่งออก / Will export: **{_focus_nm}** และทีมทั้งหมด "
+                f"({_n} คนรวมหัวหน้า / {_n} people incl. manager){_mgr_txt}")
+    else:
+        st.info(f"จะส่งออก / Will export: **{_plan_preview['title']}** "
+                f"({_n} คน / {_n} people)")
+except Exception as _e:  # pragma: no cover
+    st.warning(f"ไม่สามารถสร้างผังได้ / cannot build plan: {_e}")
 
-        dot_lines.append("}")
-        dot_source = "\n".join(dot_lines)
+# ---- two actions --------------------------------------------------------
+a1, a2 = st.columns(2)
+_gen_img = a1.button("🖼️ สร้างรูป (PNG / JPG / PDF) / Generate image",
+                     use_container_width=True, type="primary",
+                     key="org_exp_genimg")
+_gen_print = a2.button("🖨️ พิมพ์ / บันทึก PDF (เหมือนผังด้านบน) / "
+                       "Print · Save-as-PDF (exact copy)",
+                       use_container_width=True, key="org_exp_genprint")
 
-        # ── Title block above the chart (Visio-style mode shows it prominently) ──
-        from datetime import date as _date
-        company_name = "ANCA Manufacturing Solutions (Thailand) Ltd."
-        chart_subtitle = f"Organization Chart — {chart_root_label if chart_root else 'Complete'} ({len(visible_emps)} employees)"
-        effective_date = _date.today().strftime("%d %B %Y")
-
-        st.markdown(
-            f"""
-<div style="display:flex; justify-content:space-between; align-items:flex-start;
-            padding:10px 14px; margin-bottom:10px; border-bottom:2px solid #009ADE;">
-  <div>
-    <div style="font-size:18px; font-weight:700; color:#1F4E79;">{_html.escape(company_name)}</div>
-    <div style="font-size:11px; color:#6B7280; margin-top:2px;">{_html.escape(chart_subtitle)}</div>
-  </div>
-  <div style="text-align:right; font-size:10px; color:#6B7280; line-height:1.5;">
-    <div><b>Effective:</b> {effective_date}</div>
-    <div><b>Total Employees:</b> {len(visible_emps)}</div>
-    <div><i>Generated from Anca HR App</i></div>
-  </div>
-</div>
-""",
-            unsafe_allow_html=True,
-        )
-
-        svg = None
+if _gen_img:
+    with st.spinner("กำลังวาดผัง / rendering chart…"):
         try:
-            svg = _render_dot_with_inline_photos(dot_source)
-            # Wrap in a responsive container so wide charts can scroll horizontally
-            st.markdown(
-                f'<div style="overflow-x:auto; width:100%;">{svg}</div>',
-                unsafe_allow_html=True,
-            )
-        except subprocess.TimeoutExpired:
-            st.error("⏱️ The chart took too long to render. Try narrowing the branch or reducing depth.")
-            with st.expander("Show DOT source (for debugging)"):
-                st.code(dot_source, language="dot")
-        except subprocess.CalledProcessError as ex:
-            st.error(
-                f"Could not render the visual chart: dot returned {ex.returncode}. "
-                "The Tree and Table views above still work."
-            )
-            with st.expander("Show DOT source (for debugging)"):
-                st.code(dot_source, language="dot")
-            if ex.stderr:
-                with st.expander("Show dot stderr"):
-                    st.code(ex.stderr.decode("utf-8", errors="replace"))
-        except FileNotFoundError:
-            # graphviz binary missing — fall back to Streamlit's built-in renderer
-            # (loses photos but keeps the chart)
-            st.warning("⚠️ Graphviz binary not found on this server. Falling back to the default renderer — photos may not display.")
-            st.graphviz_chart(dot_source, use_container_width=True)
-        except Exception as ex:
-            st.error(
-                f"Could not render the visual chart: {ex}. "
-                "The Tree and Table views above still work."
-            )
-            with st.expander("Show DOT source (for debugging)"):
-                st.code(dot_source, language="dot")
-
-        # Legend
-        st.markdown("---")
-        leg1, leg2 = st.columns(2)
-        with leg1:
-            st.markdown("**Line types / ประเภทเส้นเชื่อม:**")
-            st.markdown("- **Solid line** ─── Direct report (รายงานตรง)")
-            st.markdown("- **Dashed line** ╌╌╌ Dotted-line / matrix report (รายงานสายประ)")
-        with leg2:
-            if color_scheme.startswith("By role"):
-                st.markdown("**Color by role / สีตามบทบาท:**")
-                for role in ["Mgr.", "Sup.", "Leader", "(staff)"]:
-                    c = admin_role_colors.get(role, {}).get("fill") or ROLE_DEFAULTS[role]["fill"]
-                    st.markdown(
-                        f"<span style='display:inline-block;width:14px;height:14px;"
-                        f"background:{c};border-radius:3px;margin-right:6px;vertical-align:middle'></span>"
-                        f"**{role}**", unsafe_allow_html=True,
-                    )
+            imgs = _oce.render_images(
+                act, scope, photos_bytes=_photos_bytes, version=ver,
+                fmts=("png", "jpg", "pdf"), **_scope_kwargs())
+            if not imgs:
+                st.session_state["_org_img"] = None
             else:
-                st.markdown("**Color by department / สีตามแผนก:**")
-                st.caption("Each department has its own color — admin sets these in Settings.")
+                st.session_state["_org_img"] = imgs
+                st.session_state["_org_img_stub"] = _fname_stub()
+                st.session_state["_org_img_ver"] = ver
+        except Exception as _e:
+            st.session_state["_org_img"] = None
+            st.error(f"เกิดข้อผิดพลาด / error: {_e}")
 
-        # ── Action buttons: full-screen view + PNG download (only if SVG rendered)
-        if svg:
-            @st.dialog("📐 Full-screen organizational chart", width="large")
-            def _show_fullscreen_chart(svg_data: str):
-                """Render the chart in a wide modal with scrollable overflow."""
-                st.markdown(
-                    f'<div style="overflow:auto; width:100%; max-height:78vh;">{svg_data}</div>',
-                    unsafe_allow_html=True,
-                )
-                st.caption("💡 Scroll horizontally and vertically inside the dialog to navigate large charts. "
-                            "Close with the X in the top-right.")
+_oi = st.session_state.get("_org_img")
+if _oi:
+    _stub = st.session_state.get("_org_img_stub", "OrgChart")
+    _v = st.session_state.get("_org_img_ver", ver)
+    st.image(_oi["png"], use_container_width=True,
+             caption=f"ตัวอย่าง / Preview — {_stub} {_v}")
+    d1, d2, d3 = st.columns(3)
+    d1.download_button("⬇️ PNG", _oi["png"], use_container_width=True,
+        file_name=f"AMS_OrgChart_{_stub}_{_v}.png", mime="image/png")
+    d2.download_button("⬇️ JPG", _oi["jpg"], use_container_width=True,
+        file_name=f"AMS_OrgChart_{_stub}_{_v}.jpg", mime="image/jpeg")
+    d3.download_button("⬇️ PDF", _oi["pdf"], use_container_width=True,
+        file_name=f"AMS_OrgChart_{_stub}_{_v}.pdf", mime="application/pdf")
+elif _oi is None and "_org_img" in st.session_state:
+    st.info("ไม่มีพนักงานในขอบเขตที่เลือก / no staff in the selected scope.")
 
-            ab1, ab2, ab3 = st.columns([1, 1, 2])
-            if ab1.button("🔍 View full-screen", use_container_width=True,
-                          help="Open the chart in a wider modal for easier review"):
-                _show_fullscreen_chart(svg)
+if _gen_print:
+    with st.spinner("กำลังสร้างไฟล์พิมพ์ / building printable file…"):
+        try:
+            doc = _oce.build_print_html(
+                act, scope, photos=_photos_uri, version=ver,
+                proposed=proposed, approved=approved, eff_date=eff_date,
+                **_scope_kwargs())
+            st.session_state["_org_print"] = doc
+            st.session_state["_org_print_stub"] = _fname_stub()
+            st.session_state["_org_print_ver"] = ver
+        except Exception as _e:
+            st.session_state["_org_print"] = None
+            st.error(f"เกิดข้อผิดพลาด / error: {_e}")
 
-            # Pre-render PNG so the download button has data ready on click.
-            # Uses the same DOT source — dot binary reads the photo temp files
-            # directly and embeds them in the PNG output natively.
-            try:
-                png_proc = subprocess.run(
-                    ["dot", "-Tpng", "-Gdpi=150"],
-                    input=dot_source.encode("utf-8"),
-                    capture_output=True, check=True, timeout=60,
-                )
-                ab2.download_button(
-                    "⬇️ Download as PNG",
-                    data=png_proc.stdout,
-                    file_name=f"org_chart_{chart_root or 'all'}.png",
-                    mime="image/png",
-                    help="High-resolution PNG (150 DPI) — paste into PowerPoint, Google Slides, or Word",
-                    use_container_width=True,
-                )
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-                # Fall back to DOT if PNG rendering fails for any reason
-                ab2.download_button(
-                    "⬇️ Download as DOT (fallback)",
-                    data=dot_source.encode("utf-8"),
-                    file_name=f"org_chart_{chart_root or 'all'}.dot",
-                    mime="text/vnd.graphviz",
-                    help="PNG rendering failed — falling back to DOT source",
-                    use_container_width=True,
-                )
-
-        # ── Signature block below the chart (find the org's top GM if available) ──
-        gm_emp = None
-        for emp in visible_emps:
-            if (emp.get("title") or "").lower().strip() in ("general manager", "ceo", "managing director"):
-                gm_emp = emp
-                break
-        if not gm_emp and visible_emps:
-            # Fall back to the root of the visible tree (whoever has no visible parent)
-            visible_set_local = set(emp["emp_no"] for emp in visible_emps)
-            roots = [e for e in visible_emps
-                       if (e.get("manager_emp_no") or "") not in visible_set_local]
-            if roots:
-                gm_emp = roots[0]
-
-        if gm_emp:
-            gm_name = _format_short_name(gm_emp.get("emp_name") or "?", gm_emp.get("nickname") or "")
-            gm_title = gm_emp.get("title") or "General Manager"
-            st.markdown(
-                f"""
-<div style="display:flex; justify-content:flex-end; margin-top:30px; padding:0 14px;">
-  <div style="text-align:center; min-width:220px;">
-    <div style="border-top:1px solid #6B7280; padding-top:6px; font-size:11px; color:#374151;">
-      <div><b>{_html.escape(gm_name)}</b></div>
-      <div style="color:#6B7280;">{_html.escape(gm_title)}</div>
-      <div style="margin-top:8px; color:#9CA3AF;">Date: ________________</div>
-    </div>
-  </div>
-</div>
-""",
-                unsafe_allow_html=True,
-            )
-
-
-# ── Table view ──
-with tab_table:
-    rows = []
-    for e in employees:
-        mgr_no = e.get("manager_emp_no") or ""
-        mgr = by_no.get(mgr_no)
-        rows.append({
-            "Emp #": e["emp_no"],
-            "Name": e.get("emp_name", ""),
-            "Nickname": e.get("nickname") or "",
-            "Title": e.get("title") or "",
-            "Department": e.get("dept_by_location") or "",
-            "Cost Centre": e.get("cost_centre_name") or "",
-            "Level": e.get("level") or "",
-            "Direct/Indirect": e.get("d_in") or "",
-            "Mgr role": e.get("is_mgr_role") or "",
-            t("reports_to"): mgr.get("emp_name", "") if mgr else (e.get("manager_name") or ""),
-            "Mgr Emp #": mgr_no,
-            "Status": e.get("status") or "",
-            "Joined": e.get("joined_date") or "",
-        })
-    df = pd.DataFrame(rows)
-
-    f1, f2, f3 = st.columns(3)
-    dept_filter = f1.multiselect("Filter by department",
-                                   sorted(df["Department"].dropna().unique().tolist()))
-    role_filter = f2.multiselect("Filter by Mgr role",
-                                   sorted(df["Mgr role"].dropna().unique().tolist()))
-    name_filter = f3.text_input("Search name / title", "")
-
-    fdf = df.copy()
-    if dept_filter:
-        fdf = fdf[fdf["Department"].isin(dept_filter)]
-    if role_filter:
-        fdf = fdf[fdf["Mgr role"].isin(role_filter)]
-    if name_filter:
-        nf = name_filter.lower()
-        fdf = fdf[
-            fdf["Name"].str.lower().str.contains(nf, na=False)
-            | fdf["Title"].str.lower().str.contains(nf, na=False)
-            | fdf["Nickname"].str.lower().str.contains(nf, na=False)
-        ]
-
-    st.caption(f"Showing {len(fdf):,} of {len(df):,} employees")
-    st.dataframe(fdf, use_container_width=True, hide_index=True, height=600)
-
-    csv = fdf.to_csv(index=False).encode("utf-8")
-    st.download_button("⬇️ Download CSV", data=csv,
-                        file_name="org_chart.csv", mime="text/csv")
-
-# ── By department ──
-with tab_dept:
-    by_dept: dict[str, list[dict]] = {}
-    for e in employees:
-        d = e.get("dept_by_location") or "(no department)"
-        by_dept.setdefault(d, []).append(e)
-
-    sorted_depts = sorted(by_dept.keys())
-
-    # Summary metrics
-    st.markdown(f"#### {len(sorted_depts)} departments, {len(employees)} employees")
-    mcols = st.columns(4)
-    for i, d in enumerate(sorted_depts[:4]):
-        mcols[i].metric(d, len(by_dept[d]))
-
-    # Each dept as an expander
-    for d in sorted_depts:
-        members = by_dept[d]
-        members.sort(key=lambda x: (-(x.get("level") or 0), x.get("emp_name") or ""))
-        with st.expander(f"🏢 **{d}** — {len(members)} people", expanded=False):
-            tdf = pd.DataFrame([{
-                "Emp #": m["emp_no"],
-                "Name": m.get("emp_name", ""),
-                "Nick": m.get("nickname") or "",
-                "Title": m.get("title") or "",
-                "Level": m.get("level") or "",
-                "Mgr role": m.get("is_mgr_role") or "",
-                t("reports_to"): m.get("manager_name") or "",
-            } for m in members])
-            st.dataframe(tdf, use_container_width=True, hide_index=True)
+_op = st.session_state.get("_org_print")
+if _op:
+    _pstub = st.session_state.get("_org_print_stub", "OrgChart")
+    _pv = st.session_state.get("_org_print_ver", ver)
+    st.download_button(
+        "⬇️ เปิดไฟล์เพื่อพิมพ์ / บันทึก PDF — Open to print / Save-as-PDF",
+        _op.encode("utf-8"), use_container_width=True, type="primary",
+        file_name=f"AMS_OrgChart_{_pstub}_{_pv}.html", mime="text/html")
+    st.caption("เปิดไฟล์แล้วหน้าต่างพิมพ์จะเด้งขึ้นเอง — เลือกเครื่องพิมพ์หรือ "
+               "Save as PDF (แนะนำกระดาษ A3 แนวนอน) / The file opens straight "
+               "into the print dialog — pick a printer or Save as PDF "
+               "(A3 landscape recommended).")

@@ -1,0 +1,233 @@
+{
+ "_schema": "AMS in-video quiz (lib/video_quiz_db.py vq_questions). qtype: single(correct=index)|multiple([idx])|truefalse(bool)|short(str). One vq course per chapter video.",
+ "videos": [
+  {
+   "chapter": 1,
+   "title": "SC&L Ch1 — Foundations of Supply Chain & Logistics",
+   "youtube_id": "",
+   "pass_pct": 60,
+   "questions": [
+    {
+     "t_seconds": 180,
+     "qtype": "single",
+     "prompt": "Which set lists the three supply-chain flows?\nข้อใดคือการไหลสามอย่างของโซ่อุปทาน?",
+     "options": [
+      "Material, information, money / วัสดุ ข้อมูล เงิน",
+      "People, weather, cash / คน อากาศ เงินสด",
+      "Orders, emails, calls / คำสั่ง อีเมล โทรศัพท์"
+     ],
+     "correct": 0,
+     "points": 1
+    },
+    {
+     "t_seconds": 510,
+     "qtype": "truefalse",
+     "prompt": "A location code A-12-03-B means Aisle A, Bay 12, Level 03, Bin B.\nรหัส A-12-03-B หมายถึง ทางเดิน A ช่อง 12 ชั้น 03 ช่องย่อย B",
+     "options": [],
+     "correct": true,
+     "points": 1
+    }
+   ]
+  },
+  {
+   "chapter": 2,
+   "title": "SC&L Ch2 — Import–Export Operations & Documents",
+   "youtube_id": "",
+   "pass_pct": 60,
+   "questions": [
+    {
+     "t_seconds": 300,
+     "qtype": "single",
+     "prompt": "Under which Incoterm does the seller pay import duty at destination?\nภายใต้ Incoterm ใดที่ผู้ขายจ่ายอากรขาเข้าที่ปลายทาง?",
+     "options": [
+      "DDP / DDP",
+      "EXW / EXW",
+      "FOB / FOB"
+     ],
+     "correct": 0,
+     "points": 1
+    },
+    {
+     "t_seconds": 480,
+     "qtype": "truefalse",
+     "prompt": "An Air Waybill (AWB) can transfer ownership (title) to the goods.\nใบตราส่งทางอากาศ (AWB) โอนกรรมสิทธิ์ในสินค้าได้",
+     "options": [],
+     "correct": false,
+     "points": 1
+    }
+   ]
+  },
+  {
+   "chapter": 3,
+   "title": "SC&L Ch3 — Customs Tariff (HS Code) & Problems",
+   "youtube_id": "",
+   "pass_pct": 60,
+   "questions": [
+    {
+     "t_seconds": 450,
+     "qtype": "single",
+     "prompt": "CIF THB 500,000, duty 5%, VAT 7% — total payable to Customs is:\nCIF 500,000 อากร 5% VAT 7% — ยอดรวมที่ต้องชำระคือ:",
+     "options": [
+      "THB 61,750 / 61,750 บาท",
+      "THB 25,000 / 25,000 บาท",
+      "THB 36,750 / 36,750 บาท"
+     ],
+     "correct": 0,
+     "points": 1
+    },
+    {
+     "t_seconds": 570,
+     "qtype": "truefalse",
+     "prompt": "A wrong HS code can trigger back-duty and penalties on a later audit.\nรหัส HS ผิดอาจทำให้ถูกเรียกอากรย้อนหลังและค่าปรับเมื่อถูกตรวจภายหลัง",
+     "options": [],
+     "correct": true,
+     "points": 1
+    }
+   ]
+  },
+  {
+   "chapter": 4,
+   "title": "SC&L Ch4 — WMS Fundamentals",
+   "youtube_id": "",
+   "pass_pct": 60,
+   "questions": [
+    {
+     "t_seconds": 300,
+     "qtype": "single",
+     "prompt": "What is the correct order of the WMS processes?\nลำดับกระบวนการ WMS ที่ถูกต้องคือ?",
+     "options": [
+      "Receive → Put-away → Store → Pick → Pack → Ship / รับ → เก็บเข้าที่ → จัดเก็บ → หยิบ → บรรจุ → ส่ง",
+      "Pick → Pack → Receive → Ship → Store → Put-away / หยิบ → บรรจุ → รับ → ส่ง → จัดเก็บ → เก็บเข้าที่"
+     ],
+     "correct": 0,
+     "points": 1
+    },
+    {
+     "t_seconds": 520,
+     "qtype": "truefalse",
+     "prompt": "RFID tags must have a clear line of sight to be read, just like a 1D barcode.\nRFID ต้องเล็งให้ตรงจึงอ่านได้ เหมือนบาร์โค้ด 1 มิติ",
+     "options": [],
+     "correct": false,
+     "points": 1
+    }
+   ]
+  },
+  {
+   "chapter": 5,
+   "title": "SC&L Ch5 — WMS in Operation & ERP Integration",
+   "youtube_id": "",
+   "pass_pct": 60,
+   "questions": [
+    {
+     "t_seconds": 210,
+     "qtype": "single",
+     "prompt": "ABC analysis is based on which principle?\nการวิเคราะห์ ABC อยู่บนหลักการใด?",
+     "options": [
+      "The Pareto (80/20) principle / หลักพาเรโต (80/20)",
+      "First-in first-out / เข้าก่อนออกก่อน",
+      "Just-in-time / ทันเวลาพอดี"
+     ],
+     "correct": 0,
+     "points": 1
+    },
+    {
+     "t_seconds": 570,
+     "qtype": "truefalse",
+     "prompt": "In WMS-ERP integration, orders flow down to the WMS and confirmations flow up to the ERP.\nในการเชื่อม WMS-ERP คำสั่งไหลลงสู่ WMS และการยืนยันไหลขึ้นสู่ ERP",
+     "options": [],
+     "correct": true,
+     "points": 1
+    }
+   ]
+  },
+  {
+   "chapter": 6,
+   "title": "SC&L Ch6 — Lean Supply Chain Management",
+   "youtube_id": "",
+   "pass_pct": 60,
+   "questions": [
+    {
+     "t_seconds": 300,
+     "qtype": "multiple",
+     "prompt": "Which of these are among the 7+1 wastes? (choose all)\nข้อใดอยู่ในความสูญเปล่า 7+1? (เลือกได้หลายข้อ)",
+     "options": [
+      "Waiting / การรอคอย",
+      "Defects / ของเสีย",
+      "Over-production / การผลิตเกิน",
+      "Profit / กำไร"
+     ],
+     "correct": [
+      0,
+      1,
+      2
+     ],
+     "points": 1
+    },
+    {
+     "t_seconds": 510,
+     "qtype": "truefalse",
+     "prompt": "Kanban is a pull signal that replenishes only what was used.\nคัมบังคือสัญญาณดึงที่เติมเฉพาะสิ่งที่ถูกใช้",
+     "options": [],
+     "correct": true,
+     "points": 1
+    }
+   ]
+  },
+  {
+   "chapter": 7,
+   "title": "SC&L Ch7 — Warehouse Management & Storage Strategy",
+   "youtube_id": "",
+   "pass_pct": 60,
+   "questions": [
+    {
+     "t_seconds": 210,
+     "qtype": "single",
+     "prompt": "Which storage medium best suits long steel bar and profile?\nอุปกรณ์ใดเหมาะที่สุดกับเหล็กเส้นและโปรไฟล์ยาว?",
+     "options": [
+      "Cantilever racking / ชั้น cantilever",
+      "Small-parts shelving / ชั้นของชิ้นเล็ก",
+      "Pallet-flow lane / ช่องพาเลทไหล"
+     ],
+     "correct": 0,
+     "points": 1
+    },
+    {
+     "t_seconds": 480,
+     "qtype": "truefalse",
+     "prompt": "FEFO ships the earliest-expiry stock first.\nFEFO ส่งของที่หมดอายุก่อนออกก่อน",
+     "options": [],
+     "correct": true,
+     "points": 1
+    }
+   ]
+  },
+  {
+   "chapter": 8,
+   "title": "SC&L Ch8 — Automated Storage & Retrieval Systems (AS/RS)",
+   "youtube_id": "",
+   "pass_pct": 60,
+   "questions": [
+    {
+     "t_seconds": 390,
+     "qtype": "single",
+     "prompt": "A VLM costs THB 4,000,000 and saves 1,250,000/yr. Simple payback ≈\nVLM ราคา 4,000,000 ประหยัด 1,250,000/ปี ระยะคืนทุนประมาณ",
+     "options": [
+      "3.2 years / 3.2 ปี",
+      "32 years / 32 ปี",
+      "0.3 years / 0.3 ปี"
+     ],
+     "correct": 0,
+     "points": 1
+    },
+    {
+     "t_seconds": 510,
+     "qtype": "truefalse",
+     "prompt": "Installing an AS/RS removes the need for a WMS entirely.\nการติดตั้ง AS/RS ทำให้ไม่จำเป็นต้องมี WMS อีกต่อไป",
+     "options": [],
+     "correct": false,
+     "points": 1
+    }
+   ]
+  }
+ ]
+}

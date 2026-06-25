@@ -1,375 +1,368 @@
-"""
-lib/auth.py — Capability resolution + role helpers for Anca HR App.
-v11.4 — RBAC Phase 1 foundation (2026-05-08).
-
-Role resolution order for any username:
-    1. Explicit row in 'user_roles' table  (Super Admin reassignment, or
-        bootstrap from USER_MIGRATION_MAP in rbac_seed.py)
-    2. YAML legacy role mapped through LEGACY_ROLE_MAP below
-    3. None  (locked out — fails closed)
-
-Effective capability set:
-    effective = (role_default_caps  ∪  user_grants)  −  user_revokes
-
-Public API (pure logic — no Streamlit dependency):
-    get_user_role(username)              -> Optional[str]
-    get_role_capabilities(role_key)      -> set[str]
-    get_user_overrides(username)         -> dict[str, str]   ('grant' or 'revoke')
-    effective_capabilities(username)     -> set[str]
-    has_capability(username, cap_key)    -> bool
-    has_any_capability(username, caps)   -> bool
-    has_all_capabilities(username, caps) -> bool
-    is_super_admin(username)             -> bool
-    is_admin_or_above(username)          -> bool
-    is_internal_user(username)           -> bool
-    accessible_modules(username)         -> list[dict]
-    get_role_display(role_key, lang)     -> str
-
-Streamlit helpers (lazy-imported, safe to import this module outside Streamlit):
-    require_capability(cap_key)
-    require_any_capability(cap_keys)
-"""
-from __future__ import annotations
-
+# lib/auth.py
+# ============================================================================
+# Users + 7-role RBAC.
+# Roles (rank order): visitor < viewer < supervisor < manager < finance
+#                     < admin < super_admin
+# A user gets capabilities from their role (role_capabilities table) plus any
+# personal grants (user_capabilities). Pages call require_capability(cap);
+# inline checks call has_capability(cap); identity via current_user()
+# which includes emp_no — the link between a login and the employee master.
+# ============================================================================
+import hashlib
+import hmac
 import os
-import sqlite3
-from pathlib import Path
-from typing import Iterable, Optional
+import datetime as dt
+
+import streamlit as st
+
+from lib.db import get_conn, IS_POSTGRES, PH
+
+SERIAL = "SERIAL PRIMARY KEY" if IS_POSTGRES else \
+         "INTEGER PRIMARY KEY AUTOINCREMENT"
+
+ROLES = ["visitor", "viewer", "supervisor", "manager", "finance",
+         "admin", "super_admin"]
 
 
-# ============================================================================
-#  LEGACY → NEW role mapping
-# ============================================================================
-# Used for users NOT in the user_roles table — i.e., custom users created
-# via the Users page in v11.3, whose YAML role is admin/manager/viewer.
-#
-# Note: legacy 'admin' (a custom user) maps to NEW 'admin' role (Level 6),
-# NOT to 'super_admin'. The default 'admin' username gets super_admin via
-# USER_MIGRATION_MAP (in rbac_seed.py) — that's the bootstrap account.
-LEGACY_ROLE_MAP = {
-    "admin":   "admin",
-    "manager": "manager",
-    "viewer":  "viewer",
-}
+def _hash(pw: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac("sha256", pw.encode(), salt.encode(),
+                               120_000).hex()
 
 
-def _resolve_db_path() -> str:
-    env = os.environ.get("HR_DB_PATH")
-    if env:
-        return env
-    return str(Path(__file__).resolve().parent.parent / "data" / "hr.db")
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(_resolve_db_path())
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-# ============================================================================
-#  Pure-logic API
-# ============================================================================
-def get_user_role(username: str) -> Optional[str]:
-    """Return role_key for username following the resolution order in the
-    module docstring. Returns None for unknown users (fails closed).
-
-    Defensive: if the user_roles table is missing or the DB is locked,
-    silently falls through to the YAML lookup so the app never crashes
-    with a hard SQL error on the landing page.
-    """
-    if not username:
-        return None
-
-    # 1. Explicit row in user_roles (highest priority)
-    try:
-        conn = _connect()
+def migrate():
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"""CREATE TABLE IF NOT EXISTS users (
+        id {SERIAL},
+        username TEXT UNIQUE NOT NULL,
+        pw_salt TEXT NOT NULL, pw_hash TEXT NOT NULL,
+        role_key TEXT NOT NULL DEFAULT 'viewer',
+        emp_no TEXT,                       -- link to employees.emp_no
+        email TEXT,                        -- for notifications
+        active INTEGER NOT NULL DEFAULT 1,
+        must_change_pw INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT)""")
+    # additive migrations (idempotent AND Postgres-safe: on PG a failed
+    # statement aborts the whole transaction, so commit on success and
+    # rollback on "column already exists" before the next statement runs)
+    for _col in ("line_user_id TEXT",
+                 "must_change_pw INTEGER NOT NULL DEFAULT 0"):
         try:
-            cur = conn.execute(
-                "SELECT role_key FROM user_roles WHERE username = ?", (username,)
-            )
-            row = cur.fetchone()
-            if row and row["role_key"]:
-                return row["role_key"]
-        finally:
-            conn.close()
-    except sqlite3.OperationalError:
-        # Table might not exist yet (first deploy before migration runs),
-        # or DB temporarily locked — fall through to YAML.
-        pass
+            cur.execute(f"ALTER TABLE users ADD COLUMN {_col}")
+            conn.commit()
+        except Exception:
+            conn.rollback() if IS_POSTGRES else None
+    cur.execute(f"""CREATE TABLE IF NOT EXISTS roles (
+        role_key TEXT PRIMARY KEY, name_en TEXT, name_th TEXT,
+        rank INTEGER)""")
+    cur.execute(f"""CREATE TABLE IF NOT EXISTS modules (
+        module_key TEXT PRIMARY KEY, name_en TEXT, name_th TEXT,
+        active INTEGER NOT NULL DEFAULT 1)""")
+    cur.execute(f"""CREATE TABLE IF NOT EXISTS capabilities (
+        cap_key TEXT PRIMARY KEY, name_en TEXT, name_th TEXT,
+        module_key TEXT)""")
+    cur.execute(f"""CREATE TABLE IF NOT EXISTS role_capabilities (
+        role_key TEXT NOT NULL, cap_key TEXT NOT NULL,
+        PRIMARY KEY (role_key, cap_key))""")
+    cur.execute(f"""CREATE TABLE IF NOT EXISTS user_capabilities (
+        username TEXT NOT NULL, cap_key TEXT NOT NULL,
+        PRIMARY KEY (username, cap_key))""")
 
-    # 2. Fall back to YAML legacy role via auth_config
-    try:
-        from config import auth_config  # lazy import to avoid circular imports
-        for u in auth_config.list_users():
-            if u.get("username") == username:
-                legacy = u.get("role")
-                if legacy in LEGACY_ROLE_MAP:
-                    return LEGACY_ROLE_MAP[legacy]
-                break
-    except Exception:
-        pass
+    # --- ported from v11.5: login audit + self-service signup (req. 4) ---
+    cur.execute(f"""CREATE TABLE IF NOT EXISTS login_audit (
+        id {SERIAL},
+        username TEXT,
+        success INTEGER NOT NULL,           -- 1 success / 0 failure
+        ip_address TEXT, user_agent TEXT,
+        role_at_login TEXT, failure_reason TEXT,
+        occurred_at TEXT)""")
+    cur.execute(f"""CREATE TABLE IF NOT EXISTS signup_requests (
+        id {SERIAL},
+        req_username TEXT NOT NULL, req_email TEXT, req_full_name TEXT,
+        req_emp_no TEXT, req_role TEXT DEFAULT 'viewer', reason TEXT,
+        pw_salt TEXT NOT NULL, pw_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',   -- pending/approved/rejected
+        request_ip TEXT, request_user_agent TEXT,
+        submitted_at TEXT,
+        reviewed_by TEXT, reviewed_at TEXT, review_notes TEXT,
+        granted_role TEXT)""")
+    conn.commit()
 
+
+def create_user(username, password, role_key="viewer", emp_no=None,
+                email=None, must_change=False):
+    salt = os.urandom(16).hex()
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"""INSERT INTO users (username, pw_salt, pw_hash, role_key,
+                    emp_no, email, created_at, must_change_pw)
+                    VALUES ({PH},{PH},{PH},{PH},{PH},{PH},{PH},{PH})""",
+                (username, salt, _hash(password, salt), role_key, emp_no,
+                 email, dt.datetime.now().isoformat(timespec="seconds"),
+                 1 if must_change else 0))
+    conn.commit()
+
+
+def set_password(username, new_password):
+    """Set a new password (new salt) and clear the must-change flag."""
+    salt = os.urandom(16).hex()
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"""UPDATE users SET pw_salt={PH}, pw_hash={PH},
+                    must_change_pw=0 WHERE username={PH}""",
+                (salt, _hash(new_password, salt), username))
+    conn.commit()
+
+
+def verify_login(username, password):
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"""SELECT username, pw_salt, pw_hash, role_key, emp_no,
+                    email, must_change_pw FROM users
+                    WHERE username={PH} AND active=1""",
+                (username,))
+    r = cur.fetchone()
+    if not r:
+        return None
+    row = dict(zip([d[0] for d in cur.description], r)) if IS_POSTGRES \
+        else dict(r)
+    if hmac.compare_digest(row["pw_hash"], _hash(password, row["pw_salt"])):
+        return row
     return None
 
 
-def get_role_capabilities(role_key: str) -> set[str]:
-    """All capability keys granted to this role by default."""
-    if not role_key:
-        return set()
-    try:
-        conn = _connect()
+def _caps_for(username, role_key):
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"SELECT cap_key FROM role_capabilities WHERE role_key={PH}",
+                (role_key,))
+    caps = {r[0] for r in cur.fetchall()}
+    cur.execute(f"SELECT cap_key FROM user_capabilities WHERE username={PH}",
+                (username,))
+    caps |= {r[0] for r in cur.fetchall()}
+    return caps
+
+
+def login(username, password):
+    row = verify_login(username, password)
+    if not row:
         try:
-            cur = conn.execute(
-                "SELECT capability_key FROM role_capabilities WHERE role_key = ?",
-                (role_key,),
-            )
-            return {r["capability_key"] for r in cur.fetchall()}
-        finally:
-            conn.close()
-    except sqlite3.OperationalError:
-        return set()
-
-
-def get_user_overrides(username: str) -> dict[str, str]:
-    """Returns {capability_key: 'grant' | 'revoke'} for this user."""
-    if not username:
-        return {}
-    try:
-        conn = _connect()
-        try:
-            cur = conn.execute(
-                """SELECT capability_key, override_type
-                   FROM user_capability_overrides WHERE username = ?""",
-                (username,),
-            )
-            return {r["capability_key"]: r["override_type"] for r in cur.fetchall()}
-        finally:
-            conn.close()
-    except sqlite3.OperationalError:
-        return {}
-
-
-def effective_capabilities(username: str) -> set[str]:
-    """effective = (role_default_caps ∪ user_grants) − user_revokes"""
-    role = get_user_role(username)
-    if not role:
-        return set()
-
-    base = get_role_capabilities(role)
-    overrides = get_user_overrides(username)
-
-    grants = {k for k, v in overrides.items() if v == "grant"}
-    revokes = {k for k, v in overrides.items() if v == "revoke"}
-
-    return (base | grants) - revokes
-
-
-def has_capability(username: str, cap_key: str) -> bool:
-    return cap_key in effective_capabilities(username)
-
-
-def has_any_capability(username: str, cap_keys: Iterable[str]) -> bool:
-    caps = effective_capabilities(username)
-    return any(k in caps for k in cap_keys)
-
-
-def has_all_capabilities(username: str, cap_keys: Iterable[str]) -> bool:
-    caps = effective_capabilities(username)
-    return all(k in caps for k in cap_keys)
-
-
-# ============================================================================
-#  Convenience role predicates
-# ============================================================================
-def is_super_admin(username: str) -> bool:
-    return get_user_role(username) == "super_admin"
-
-
-def is_admin_or_above(username: str) -> bool:
-    return get_user_role(username) in ("admin", "super_admin")
-
-
-def is_internal_user(username: str) -> bool:
-    """True if user has an internal (non-Visitor) role."""
-    role = get_user_role(username)
-    if not role:
+            log_login_attempt(username, False, "",
+                              "wrong password" if user_exists(username)
+                              else "user not found")
+        except Exception:
+            pass
         return False
+    st.session_state["user"] = {
+        "username": row["username"], "role": row["role_key"],
+        "emp_no": row["emp_no"], "email": row["email"],
+        "must_change_pw": row.get("must_change_pw", 0),
+        "caps": _caps_for(row["username"], row["role_key"])}
     try:
-        conn = _connect()
-        try:
-            cur = conn.execute(
-                "SELECT is_external FROM roles WHERE role_key = ?", (role,)
-            )
-            row = cur.fetchone()
-            return bool(row and row["is_external"] == 0)
-        finally:
-            conn.close()
-    except sqlite3.OperationalError:
-        # Roles table missing — assume internal (don't lock out logged-in users)
-        return role != "visitor"
+        log_login_attempt(row["username"], True, row["role_key"], "")
+    except Exception:
+        pass
+    return True
 
 
-# ============================================================================
-#  Module hub
-# ============================================================================
-def accessible_modules(username: str) -> list[dict]:
-    """Return all visible modules for this user, with an 'accessible' flag.
-    See lib/landing.py for how this is rendered as the post-login hub."""
-    user_caps = effective_capabilities(username)
-    is_internal = is_internal_user(username)
-
-    try:
-        conn = _connect()
-        try:
-            cur = conn.execute(
-                """SELECT module_key, module_name_en, module_name_th, icon_emoji,
-                          sort_order, is_active, is_external_allowed,
-                          access_capability_key, description_en, description_th
-                   FROM modules
-                   ORDER BY sort_order, module_key"""
-            )
-            out: list[dict] = []
-            for r in cur.fetchall():
-                mod = dict(r)
-
-                # Audience filter: internal users don't see Visitor Portal,
-                # external (Visitor) users only see external-allowed modules.
-                if is_internal and mod["is_external_allowed"] == 1:
-                    continue
-                if (not is_internal) and mod["is_external_allowed"] == 0:
-                    continue
-
-                if mod["is_active"] == 0:
-                    mod["accessible"] = False  # locked / coming-soon
-                else:
-                    cap = mod["access_capability_key"] or f"{mod['module_key']}.access"
-                    mod["accessible"] = cap in user_caps
-
-                out.append(mod)
-            return out
-        finally:
-            conn.close()
-    except sqlite3.OperationalError:
-        return []
+def logout():
+    st.session_state.pop("user", None)
 
 
-# ============================================================================
-#  Display helpers
-# ============================================================================
-def get_role_display(role_key: Optional[str], lang: str = "th") -> str:
-    """Return localized role display name. Falls back to the key itself."""
-    if not role_key:
-        return "—"
-    try:
-        conn = _connect()
-        try:
-            cur = conn.execute(
-                "SELECT role_name_en, role_name_th FROM roles WHERE role_key = ?",
-                (role_key,),
-            )
-            row = cur.fetchone()
-            if not row:
-                return role_key
-            return row["role_name_th"] if lang.lower().startswith("th") else row["role_name_en"]
-        finally:
-            conn.close()
-    except sqlite3.OperationalError:
-        return role_key
+def current_user():
+    return st.session_state.get("user")
 
 
-def get_module_display(module_key: str, lang: str = "th") -> str:
-    if not module_key:
-        return "—"
-    try:
-        conn = _connect()
-        try:
-            cur = conn.execute(
-                "SELECT module_name_en, module_name_th FROM modules WHERE module_key = ?",
-                (module_key,),
-            )
-            row = cur.fetchone()
-            if not row:
-                return module_key
-            return row["module_name_th"] if lang.lower().startswith("th") else row["module_name_en"]
-        finally:
-            conn.close()
-    except sqlite3.OperationalError:
-        return module_key
+def has_capability(cap):
+    u = current_user()
+    return bool(u and cap in u["caps"])
 
 
-# ============================================================================
-#  Streamlit page guards (lazy-imported)
-# ============================================================================
-def _get_session_username() -> Optional[str]:
-    """Read current logged-in username from Streamlit session state.
-    Matches the auth pattern used in app.py (custom — not streamlit-authenticator)."""
-    try:
-        import streamlit as st
-    except ImportError:
-        return None
-    return st.session_state.get("username")
-
-
-def require_capability(cap_key: str, *, redirect_to_hub: bool = True) -> None:
-    """Streamlit page guard. Halts page render if user lacks the capability."""
-    import streamlit as st
-
-    username = _get_session_username()
-    if not username:
-        st.error("⚠️ กรุณาเข้าสู่ระบบ / Please log in to continue.")
+def require_capability(cap):
+    u = current_user()
+    if not u:
+        st.warning("กรุณาเข้าสู่ระบบก่อน / Please sign in to continue.")
+        st.page_link("app.py", label="🔐 ไปหน้าเข้าสู่ระบบ · Go to sign-in",
+                     use_container_width=True)
         st.stop()
-
-    if has_capability(username, cap_key):
-        return
-
-    role_key = get_user_role(username)
-    lang = (st.session_state.get("lang") or "th").lower()
-    role_display = get_role_display(role_key, lang)
-
-    if lang.startswith("th"):
-        st.error(
-            f"⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้\n\n"
-            f"บทบาทของคุณ ({role_display}) ไม่มีสิทธิ์ที่จำเป็น"
-        )
-    else:
-        st.error(
-            f"⛔ Permission denied\n\n"
-            f"Your role ({role_display}) does not have access to this page."
-        )
-    st.caption(f"Missing capability: `{cap_key}`")
-
-    if redirect_to_hub:
-        if st.button("🏠 " + ("กลับสู่หน้าหลัก" if lang.startswith("th") else "Back to home"),
-                      key=f"perm_back_{cap_key}"):
-            st.switch_page("app.py")
-
-    st.stop()
-
-
-def require_any_capability(cap_keys: Iterable[str], *, redirect_to_hub: bool = True) -> None:
-    """Variant: allows access if ANY of the listed capabilities are held."""
-    import streamlit as st
-
-    username = _get_session_username()
-    if not username:
-        st.error("⚠️ กรุณาเข้าสู่ระบบ / Please log in to continue.")
+    if cap not in u["caps"]:
+        st.error(f"🚫 สิทธิ์ไม่เพียงพอ / Your role ({u['role']}) lacks the "
+                 f"'{cap}' capability. Ask a Super Admin.")
         st.stop()
+    return u
 
-    if has_any_capability(username, cap_keys):
-        return
 
-    lang = (st.session_state.get("lang") or "th").lower()
-    role_display = get_role_display(get_user_role(username), lang)
+def set_user_emp_no(username, emp_no):
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"UPDATE users SET emp_no={PH} WHERE username={PH}",
+                (emp_no, username))
+    conn.commit()
 
-    if lang.startswith("th"):
-        st.error(f"⛔ ไม่มีสิทธิ์เข้าถึงหน้านี้\n\nบทบาทของคุณ ({role_display}) ไม่มีสิทธิ์ที่จำเป็น")
+
+def set_user_line_id(username, line_user_id):
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"UPDATE users SET line_user_id={PH} WHERE username={PH}",
+                (line_user_id, username))
+    conn.commit()
+
+
+def line_id_for_emp(emp_no):
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"SELECT line_user_id FROM users WHERE emp_no={PH}",
+                (str(emp_no),))
+    r = cur.fetchone()
+    return r[0] if r and r[0] else None
+
+
+def set_user_email(username, email):
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"UPDATE users SET email={PH} WHERE username={PH}",
+                (email, username))
+    conn.commit()
+
+
+def list_users():
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute("""SELECT username, role_key, emp_no, email, line_user_id,
+                   active FROM users ORDER BY username""")
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r)) if IS_POSTGRES else dict(r)
+            for r in cur.fetchall()]
+
+
+# ============================================================================
+# v11.5 port (req. 4): login audit + self-service signup & review.
+# ============================================================================
+def _now():
+    return dt.datetime.now().isoformat(timespec="seconds")
+
+
+def _client_meta():
+    """Best-effort client IP + user-agent from the request headers."""
+    ip = ""
+    ua = ""
+    try:
+        h = dict(st.context.headers or {})
+        ua = (h.get("User-Agent") or h.get("user-agent") or "")[:200]
+        xff = (h.get("X-Forwarded-For") or h.get("x-forwarded-for") or "")
+        ip = (xff.split(",")[0].strip() if xff else "")[:64]
+    except Exception:
+        pass
+    return ip, ua
+
+
+def user_exists(username):
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"SELECT 1 FROM users WHERE LOWER(username)={PH}",
+                (str(username).strip().lower(),))
+    return cur.fetchone() is not None
+
+
+# ---- login audit ----------------------------------------------------------
+def log_login_attempt(username, success, role="", failure_reason=""):
+    ip, ua = _client_meta()
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"""INSERT INTO login_audit (username, success, ip_address,
+                    user_agent, role_at_login, failure_reason, occurred_at)
+                    VALUES ({PH},{PH},{PH},{PH},{PH},{PH},{PH})""",
+                (username, 1 if success else 0, ip, ua, role or "",
+                 failure_reason or "", _now()))
+    conn.commit()
+
+
+def get_login_audit(limit=200, username=None, only_admin=False,
+                    only_failures=False):
+    conn = get_conn(); cur = conn.cursor()
+    sql = "SELECT * FROM login_audit"
+    where = []
+    params = []
+    if username:
+        where.append(f"username={PH}"); params.append(username)
+    if only_admin:
+        where.append("role_at_login LIKE '%admin%'")
+    if only_failures:
+        where.append("success=0")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += f" ORDER BY id DESC LIMIT {int(limit)}"
+    cur.execute(sql, tuple(params))
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r)) if IS_POSTGRES else dict(r)
+            for r in cur.fetchall()]
+
+
+# ---- self-service signup --------------------------------------------------
+def submit_signup_request(username, email, full_name, password,
+                          role="viewer", emp_no="", reason=""):
+    salt = os.urandom(16).hex()
+    pwh = _hash(password, salt)
+    ip, ua = _client_meta()
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"""INSERT INTO signup_requests (req_username, req_email,
+                    req_full_name, req_emp_no, req_role, reason, pw_salt,
+                    pw_hash, status, request_ip, request_user_agent,
+                    submitted_at)
+                    VALUES ({PH},{PH},{PH},{PH},{PH},{PH},{PH},{PH},'pending',
+                    {PH},{PH},{PH})""",
+                (str(username).strip(), (email or "").strip(),
+                 (full_name or "").strip(), (emp_no or "").strip(),
+                 role or "viewer", (reason or "").strip(), salt, pwh,
+                 ip, ua, _now()))
+    conn.commit()
+
+
+def signup_pending_exists(username):
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"""SELECT 1 FROM signup_requests
+                    WHERE LOWER(req_username)={PH} AND status='pending'""",
+                (str(username).strip().lower(),))
+    return cur.fetchone() is not None
+
+
+def list_signup_requests(status=None):
+    conn = get_conn(); cur = conn.cursor()
+    if status:
+        cur.execute(f"""SELECT * FROM signup_requests WHERE status={PH}
+                        ORDER BY id DESC""", (status,))
     else:
-        st.error(f"⛔ Permission denied\n\nYour role ({role_display}) does not have access to this page.")
-    st.caption(f"Need at least one of: {', '.join(f'`{c}`' for c in cap_keys)}")
+        cur.execute("SELECT * FROM signup_requests ORDER BY id DESC")
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r)) if IS_POSTGRES else dict(r)
+            for r in cur.fetchall()]
 
-    if redirect_to_hub:
-        cap_list_key = "_".join(cap_keys)
-        if st.button("🏠 " + ("กลับสู่หน้าหลัก" if lang.startswith("th") else "Back to home"),
-                      key=f"perm_back_any_{cap_list_key}"):
-            st.switch_page("app.py")
-    st.stop()
+
+def approve_signup(req_id, reviewer, granted_role=None, emp_no=None, notes=""):
+    """Create the user account from a pending request, then mark it approved.
+    The applicant keeps the password they chose at sign-up."""
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"SELECT * FROM signup_requests WHERE id={PH}", (req_id,))
+    r = cur.fetchone()
+    if not r:
+        return (False, "ไม่พบคำขอ / request not found")
+    row = dict(zip([d[0] for d in cur.description], r)) if IS_POSTGRES \
+        else dict(r)
+    if row["status"] != "pending":
+        return (False, "คำขอนี้ถูกดำเนินการแล้ว / already handled")
+    uname = row["req_username"]
+    if user_exists(uname):
+        return (False, f"มีชื่อผู้ใช้ '{uname}' อยู่แล้ว / username exists")
+    role = granted_role or row.get("req_role") or "viewer"
+    eno = (emp_no if emp_no not in (None, "") else (row.get("req_emp_no") or None))
+    cur.execute(f"""INSERT INTO users (username, pw_salt, pw_hash, role_key,
+                    emp_no, email, active, must_change_pw, created_at)
+                    VALUES ({PH},{PH},{PH},{PH},{PH},{PH},1,0,{PH})""",
+                (uname, row["pw_salt"], row["pw_hash"], role, eno or None,
+                 row.get("req_email") or None, _now()))
+    cur.execute(f"""UPDATE signup_requests SET status='approved',
+                    reviewed_by={PH}, reviewed_at={PH}, review_notes={PH},
+                    granted_role={PH} WHERE id={PH}""",
+                (reviewer, _now(), notes or "", role, req_id))
+    conn.commit()
+    return (True, f"อนุมัติและสร้างผู้ใช้ '{uname}' (บทบาท {role}) แล้ว / "
+                  f"user created")
+
+
+def reject_signup(req_id, reviewer, notes=""):
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute(f"""UPDATE signup_requests SET status='rejected',
+                    reviewed_by={PH}, reviewed_at={PH}, review_notes={PH}
+                    WHERE id={PH} AND status='pending'""",
+                (reviewer, _now(), notes or "", req_id))
+    n = cur.rowcount
+    conn.commit()
+    return n > 0

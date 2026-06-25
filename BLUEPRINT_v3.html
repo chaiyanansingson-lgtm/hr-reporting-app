@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>AMS HRM v3 — Design Blueprint (for approval before build)</title>
+<style>
+ @page{size:A4;margin:15mm 13mm 17mm 13mm;
+  @bottom-center{content:"AMS HRM v3 Blueprint — page " counter(page) " / " counter(pages);
+  font-family:Sarabun;font-size:9px;color:#999}}
+ body{font-family:"Sarabun","Loma",sans-serif;font-size:11px;line-height:1.55;color:#26303E;margin:0}
+ h1{font-size:22px;margin:0 0 4px}
+ h2{font-size:15.5px;margin:24px 0 8px;padding:7px 12px;border-radius:8px;color:#fff;
+  background:linear-gradient(95deg,#009ADE,#715091 70%);page-break-after:avoid}
+ h3{font-size:12.5px;margin:14px 0 5px;color:#715091;page-break-after:avoid}
+ p{margin:5px 0}
+ code{font-family:"DejaVu Sans Mono",monospace;font-size:9.5px;background:#f1f3f9;
+  border:1px solid #e2e6f0;border-radius:4px;padding:1px 5px}
+ table{border-collapse:collapse;width:100%;margin:8px 0;font-size:10px;page-break-inside:avoid}
+ th{background:#715091;color:#fff;text-align:left;padding:5px 8px}
+ td{border:1px solid #e3e7f1;padding:4px 8px;vertical-align:top}
+ tr:nth-child(even) td{background:#f8f9fd}
+ .flow{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:8px 0;
+  page-break-inside:avoid}
+ .st{border:1.5px solid #715091;border-radius:8px;padding:5px 9px;font-size:9.5px;
+  font-weight:700;background:#faf8fd;text-align:center}
+ .st.b{border-color:#009ADE;background:#f3faff}
+ .st.g{border-color:#16a34a;background:#f1faf4}
+ .st.r{border-color:#dc2626;background:#fdf3f3}
+ .st.y{border-color:#e8a23d;background:#fffaf1}
+ .ar{color:#8a93a6;font-weight:800;font-size:11px}
+ .callout{border-radius:9px;padding:8px 12px;margin:8px 0;page-break-inside:avoid;font-size:10.5px}
+ .why{background:#eef6ff;border:1px solid #cfe5fb}
+ .warn{background:#fff7ed;border:1px solid #fcd9a8}
+ .dec{background:#f6f1fb;border:1px solid #ddd0ee}
+ .pb{page-break-before:always}
+ .small{font-size:9px;color:#8a93a6}
+ ul{margin:4px 0 4px 18px;padding:0}li{margin:2px 0}
+</style></head><body>
+
+<h1>AMS HRM v3 — Design Blueprint</h1>
+<p style="color:#5a6478">เอกสารออกแบบเพื่อขออนุมัติก่อนสร้างจริง / Process flows, screens and data design
+for your approval before each phase is built. Prepared 12 Jun 2026 · goes with package v3 (Phase 1 already built).</p>
+
+<h2>0 · Phase roadmap & what is already DONE</h2>
+<table>
+<tr><th>Phase</th><th>Scope</th><th>Status</th></tr>
+<tr><td><b>1</b></td><td>Light ANCA CI theme · org-chart profile opener fix · org-chart PRINT by business unit (legend + version/approval block) · photo search + bulk upload by Emp.-No. filename · ERP catalog redesign (white cards, big images, side cart)</td><td>✅ <b>BUILT in this package</b></td></tr>
+<tr><td><b>2</b></td><td>ERP v2: approval-line per staff (≤3 levels, bulk upload) · Outlook .eml draft with Excel attachment · supplier email automation · full status pipeline & receiving reconciliation · reports/dashboard · multi-supplier catalogs</td><td>📋 designed below (§1–§3)</td></tr>
+<tr><td><b>3</b></td><td>Stationery STOCK &amp; ISSUE module (forecast purchase → departments draw items instantly) + cost-allocation dashboard</td><td>📋 designed (§4)</td></tr>
+<tr><td><b>4</b></td><td>Time-attendance reports module: upload the 3 standard files → team dashboards for managers + abnormality engine (R1–R8) + "not yet submitted" chase lists</td><td>📋 designed (§5)</td></tr>
+<tr><td><b>5</b></td><td>Resignation module + 2/3-consecutive-day no-show watchdog (Thai LPA s.119(5)) with notifications</td><td>📋 designed (§6)</td></tr>
+<tr><td><b>6</b></td><td>Training / LMS module (courses, anti-skip video tracking, flexible tests, dashboards, bilingual certificates, visitor access)</td><td>📋 designed (§7)</td></tr>
+<tr><td><b>7</b></td><td>Exact-format document printing v2 (สปส.1-03 / ล.ย.01 / merged job application) + direct-print popup + data-completion checklist</td><td>📋 designed (§8)</td></tr>
+<tr><td><b>8</b></td><td>Car booking fully INSIDE the system (replacing Apps Script hub) + Visitor entrance permit</td><td>📋 designed (§9–§10)</td></tr>
+<tr><td><b>—</b></td><td>Cross-cutting: unified approval framework (in-system + Outlook + LINE @529aaynp) and RBAC additions</td><td>📋 designed (§11–§12)</td></tr>
+</table>
+<div class="callout dec"><b>How to proceed:</b> review each section; reply e.g. "approve §1–§3 + §5,
+change X" and I build that phase next, test it against your real files, and ship a package update.
+One phase per session keeps each delivery testable on your machine.</div>
+
+<!-- ============================================================ -->
+<h2>1 · ERP v2 — Purchase-request workflow (your point 3)</h2>
+<h3>1.1 End-to-end flow</h3>
+<div class="flow">
+<span class="st b">Staff: cart → Submit request</span><span class="ar">→</span>
+<span class="st">System saves request<br>+ generates Outlook draft (.eml)<br>with Excel attached</span><span class="ar">→</span>
+<span class="st y">Pending approval<br>L1→L2→L3 (per staff line)</span><span class="ar">→</span>
+<span class="st g">Approved<br>(in-system click OR<br>admin uploads email evidence)</span><span class="ar">→</span>
+<span class="st b">Admin: Send to supplier<br>(.eml per supplier,<br>Excel auto-attached)</span><span class="ar">→</span>
+<span class="st">Quotation received →<br>PO placed (record order no.)</span><span class="ar">→</span>
+<span class="st g">Receiving reconcile<br>per line: received /<br>partial / cancel-too-long</span>
+</div>
+<h3>1.2 The Outlook email — how it works without IT setup</h3>
+<p>Web apps cannot open Outlook with an attachment via <code>mailto:</code>. The reliable method:
+the system generates a <b>.eml draft file</b> — clicking it opens Outlook with <b>To / Subject /
+body already filled and the Excel file already attached</b>; the user just presses Send. Works with
+desktop Outlook and the system email <code>general.anca@gmail.com</code> profile. (Optional later
+upgrade: Microsoft Graph API to send silently — needs IT to register an Azure app; the .eml route
+needs nothing.)</p>
+<ul>
+<li><b>Request email (auto, on submit):</b> To = the staff's L1 approver (falls to L2/L3 on later steps);
+Subject "[ขออนุมัติสั่งซื้อ] PO-2606-001 — {name} ({dept})"; body = bilingual summary table;
+attachment = <code>PO-2606-001.xlsx</code>.</li>
+<li><b>Supplier email (admin, after approval):</b> To = supplier contact from the supplier register;
+Subject "ขอใบเสนอราคา / Request for quotation — AMS PO-2606-001"; the same Excel attached,
+trimmed to that supplier's lines.</li>
+</ul>
+<h3>1.3 The Excel attachment (auto-generated)</h3>
+<table>
+<tr><th>Block</th><th>Columns</th></tr>
+<tr><td>Header</td><td>PO no., date, status, purpose</td></tr>
+<tr><td>Requester</td><td>Staff ID, Name (TH/EN), Cost centre, Position, Department</td></tr>
+<tr><td>Lines</td><td>#, Item no./code, Item detail, Brand, Qty, Unit price ฿, Line total ฿, Supplier</td></tr>
+<tr><td>Footer</td><td>Grand total, approval line (L1/L2/L3 names + status), signature rows</td></tr>
+</table>
+<h3>1.4 Approval lines — separate from Leave/OT, admin-configurable</h3>
+<p>Unlike Leave/OT (which reads the Mgr column automatically), purchase approval lines are often
+budget-based, so they get their own table <code>po_approval_lines (emp_no, level1_emp_no,
+level2_emp_no, level3_emp_no)</code>, editable per staff in System Admin <b>and bulk-uploadable</b>
+via Excel (columns: Emp No., L1, L2, L3 — blank = skip level). If a staff has no line configured,
+it falls back to the Mgr-column chain.</p>
+<h3>1.5 Status pipeline & tracker screen (admin)</h3>
+<table>
+<tr><th>Status</th><th>Meaning</th><th>Who moves it</th></tr>
+<tr><td>submitted</td><td>staff sent request; email drafts generated</td><td>staff</td></tr>
+<tr><td>pending_l1/l2/l3</td><td>waiting at each approval level (in-system click or evidence upload)</td><td>approvers / admin</td></tr>
+<tr><td>approved</td><td>line complete — admin may attach the approval-email screenshot/PDF as evidence (stored on the PO, audited)</td><td>system</td></tr>
+<tr><td>sent_to_supplier</td><td>supplier .eml generated &amp; sent; awaiting quotation/invoice</td><td>admin</td></tr>
+<tr><td>ordered</td><td>real order placed; supplier order/quotation no. recorded; quotation PDF attached</td><td>admin</td></tr>
+<tr><td>partially_received / received</td><td>per-LINE receiving: each line has qty_received; PO shows % complete</td><td>admin</td></tr>
+<tr><td>line_cancelled</td><td>per-line cancel with reason (out of stock / too long awaited — shows days waiting)</td><td>admin</td></tr>
+</table>
+<p>The tracker screen is a board: one row per PO, columns = the pipeline, badges for days-in-status,
+red highlight when "sent_to_supplier &gt; 7 days" or "ordered &gt; 14 days without receipt".</p>
+<h3>1.6 Reports (in-system + downloadable Excel)</h3>
+<ul>
+<li>Spend by month / department / cost centre / supplier / category (charts + pivot download)</li>
+<li>Budget vs actual per cost centre (admin sets yearly budget per cost centre)</li>
+<li>Cycle-time report: submit→approve→order→receive durations, bottleneck level</li>
+<li>Top items &amp; price history per item (detects supplier price creep)</li>
+<li>Open-items ageing: everything not yet received, sorted by days waiting</li>
+</ul>
+
+<h2>2 · Multi-supplier design (your point 6)</h2>
+<p>A <b>supplier register</b> table: name (OfficeMate, Makro, Lotus's, HardwareHouse, …), contact
+email(s), default lead-time, payment terms, active flag. Each catalog product gets a
+<code>supplier_key</code> + the catalog import screen gains a supplier selector, so one catalog
+holds many suppliers side by side. Product schema already fits (source_catalogue → supplier). Carts
+mixing suppliers split automatically into one PO per supplier at submit. Image handling per
+supplier: OFM = CDN URL by code (already works); others = optional image upload or URL column in
+the import file.</p>
+
+<h2>3 · ERP UI standard (your points 1–2 — built in Phase 1)</h2>
+<p>White professional cards on the ANCA palette: product photo large (150&nbsp;px, contain-fit),
+name, code chip in ANCA blue, brand/colour meta, price in ANCA purple; 3-wide grid; persistent
+<b>cart panel on the right</b> with line edit, live total and submit — no page change while
+browsing. The whole app now runs the light theme (white major, purple primary) matching
+manufacturing.anca.com's clean look.</p>
+
+<!-- ============================================================ -->
+<h2 class="pb">4 · Stationery STOCK &amp; ISSUE module (your point 5)</h2>
+<div class="callout why"><b>Your real flow:</b> admin forecasts and buys fast-moving items (paper,
+pens) INTO STOCK first; departments then draw them instantly — no waiting for a purchase cycle.</div>
+<h3>4.1 Flow</h3>
+<div class="flow">
+<span class="st b">Admin: stock purchase<br>(ERP PO, flagged "to stock")</span><span class="ar">→</span>
+<span class="st">Goods received →<br>stock balance + unit cost in</span><span class="ar">→</span>
+<span class="st g">Staff: "เบิกของ / Issue request"<br>pick from IN-STOCK list</span><span class="ar">→</span>
+<span class="st y">Approve: L1 only (configurable)<br>or auto-approve under ฿ limit</span><span class="ar">→</span>
+<span class="st">Admin hands over → stock −qty,<br>cost charged to dept/cost centre</span>
+</div>
+<h3>4.2 Data &amp; controls</h3>
+<ul>
+<li><code>stock_items</code>: product ref, on-hand qty, min-level (reorder alert), avg unit cost (moving average)</li>
+<li><code>stock_moves</code>: +receipt / −issue / ±adjust (count), each with dept + cost centre + actor — this is the cost-allocation ledger</li>
+<li>Reorder alert: on-hand &lt; min-level → badge on admin dashboard + optional weekly email digest</li>
+<li>Stock count screen: enter physical count → variance report → adjustment move (audited)</li>
+</ul>
+<h3>4.3 Dashboard (in-system + Excel download)</h3>
+<ul>
+<li>Issue cost by department / cost centre / month (stacked chart) — the budget-allocation view</li>
+<li>Fast-mover ranking &amp; usage-per-head by dept; stock value on hand; items below min-level</li>
+<li>Forecast helper: average monthly usage × lead time → suggested reorder qty</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>5 · Time-attendance reports module (your 3 standard files)</h2>
+<p>Standard monthly inputs (exact files you uploaded today, structures verified):
+<b>รายงานผลการคำนวณบันทึกเวลา…</b> (timesheet calc, 30 cols), <b>รายงานรายละเอียดขออนุมัติใบลา…</b>
+(leave detail, 41 cols), <b>รายงานรายละเอียดขออนุมัติใบโอที…</b> (OT detail, 40 cols — with the
+shifted-column layout: employee header col 6, time-range col 23, status col 34, found in the May
+sessions).</p>
+<h3>5.1 Flow</h3>
+<div class="flow">
+<span class="st b">HR uploads the 3 files<br>(Upload Data tab)</span><span class="ar">→</span>
+<span class="st">Parser validates layouts,<br>stores a SNAPSHOT per period</span><span class="ar">→</span>
+<span class="st g">Manager logs in →<br>sees ONLY their team<br>(via Mgr-column chain)</span><span class="ar">→</span>
+<span class="st y">Abnormality engine runs<br>R1A–R8</span><span class="ar">→</span>
+<span class="st">Chase lists + dashboards<br>+ Excel download</span>
+</div>
+<h3>5.2 Abnormality engine (same logic as our May reports)</h3>
+<table>
+<tr><th>#</th><th>Check</th><th>Rule (as agreed in the May sessions)</th></tr>
+<tr><td>R1A</td><td>Late / leave early</td><td>working day, 0 &lt; normal hours &lt; 8, no approved leave (+ YTD count per person)</td></tr>
+<tr><td>R1B</td><td>Missing time attendance</td><td>working day, normal hours = 0, no leave/absent flag</td></tr>
+<tr><td>R2</td><td>No-show</td><td>absent flag &amp; no approved leave (suppress run-date partial-scan false positives)</td></tr>
+<tr><td>R3</td><td>Leave pending approval</td><td>leave covering the period, status = รออนุมัติ → chase the superior</td></tr>
+<tr><td>R4</td><td><b>OT done but NOT submitted</b></td><td>timesheet OT exceeds submitted OT by ≥ 0.5 h (counts approved + pending)</td></tr>
+<tr><td>R5</td><td>OT pending approval</td><td>OT requests status = pending</td></tr>
+<tr><td>R6</td><td>Wrong OT</td><td>OT-type vs day-type mismatch + duplicate approved OT; overnight-scan logic for night shift (23:00–07:40) honoured</td></tr>
+<tr><td>R7</td><td>Org summary</td><td>error counts by cost centre &amp; direct/indirect</td></tr>
+<tr><td>R8</td><td>High-remuneration OT</td><td>OT filed by exempt/manager-level codes (ASM-MGR.)</td></tr>
+</table>
+<p><b>Leave not submitted:</b> the mirror of R4 — absence on the timesheet with no leave request at
+all → manager chase list. Manager dashboard: team working-hours summary, OT hours by rate, leave
+balance usage, abnormality cards with drill-down, all scoped to their reporting line; HR sees all.
+Each upload replaces that period's snapshot (versioned, audited).</p>
+
+<!-- ============================================================ -->
+<h2>6 · Resignation + no-show watchdog (Thai LPA)</h2>
+<h3>6.1 Resignation flow (mirrors Leave/OT)</h3>
+<div class="flow">
+<span class="st b">Staff submits resignation<br>(last working day, reason)</span><span class="ar">→</span>
+<span class="st y">L1→L2→L3 approval<br>(Mgr-column chain)<br>email + LINE each step</span><span class="ar">→</span>
+<span class="st g">Approved → HR checklist<br>(asset return, SSO-out,<br>final pay) → record_status<br>= resigned on the date</span>
+</div>
+<ul>
+<li><b>Manager delegate-submit:</b> a manager can file a resignation/termination request FOR a
+no-show subordinate (reason pre-set "no-show ≥ 3 consecutive working days"), routed up the
+remaining chain + HR confirmation.</li>
+<li>Notice templates auto-generated bilingually (resignation acceptance / termination notice citing
+มาตรา 119(5) — ละทิ้งหน้าที่ 3 วันทำงานติดต่อกันโดยไม่มีเหตุอันสมควร).</li>
+</ul>
+<h3>6.2 No-show watchdog</h3>
+<div class="flow">
+<span class="st y">Day 2 consecutive no-show<br>(timesheet snapshot, no leave)</span><span class="ar">→</span>
+<span class="st">⚠ Alert: manager + HR<br>(system + email + LINE)</span><span class="ar">→</span>
+<span class="st r">Day 3 → escalation:<br>"termination condition met<br>per LPA s.119(5)" + draft notice</span><span class="ar">→</span>
+<span class="st">Tracking report:<br>all open no-show cases,<br>days count, actions taken</span>
+</div>
+<p class="small">Counting uses working days from the timesheet snapshot (weekends/holidays
+excluded), and "no leave submission" cross-checks both in-system requests and the uploaded leave
+file. The legal wording on notices will be reviewed against the Act's current text at build time.</p>
+
+<!-- ============================================================ -->
+<h2 class="pb">7 · Training / LMS module</h2>
+<h3>7.1 Objects</h3>
+<table>
+<tr><th>Object</th><th>Design</th></tr>
+<tr><td>Course</td><td>title TH/EN, purpose, cover image, ordered LESSONS (video / slides-photos / test — any mix, any count), start date, deadline, pass criteria, certificate template</td></tr>
+<tr><td>Assignment</td><td>admin assigns course → person / whole department / position / role (incl. <b>visitor</b> for external trainees) with per-assignment deadline + reminder schedule</td></tr>
+<tr><td>Attempt</td><td>per user per course: lesson progress %, video watch-seconds, test scores, completion date, certificate no.</td></tr>
+</table>
+<h3>7.2 Anti-cheat video player (YouTube embed)</h3>
+<ul>
+<li>YouTube IFrame API: <b>seek/fast-forward disabled</b> (jump ahead → snapped back to furthest watched second), speed locked to 1×</li>
+<li>Watch-time heartbeat every 10 s; <b>pause on tab blur</b> (switch window → video pauses, timer stops)</li>
+<li>Test button unlocks only at ≥ 95% genuine watch-time of EVERY video; slides/photos require paging to the last page (each page logs a view)</li>
+<li class="small">Honest limit: browser-side enforcement can't stop someone pointing a phone at the screen — but it fully blocks skip/speed/inactive-tab cheating, which is the realistic goal.</li>
+</ul>
+<h3>7.3 Flexible test engine</h3>
+<table>
+<tr><th>Question type</th><th>Grading</th></tr>
+<tr><td>Multiple choice — single answer</td><td>auto (answer key) → instant score</td></tr>
+<tr><td>Multiple choice — many answers</td><td>auto (full/partial credit configurable)</td></tr>
+<tr><td>Short text</td><td>auto if exact/contains-key set; else manual queue</td></tr>
+<tr><td>Long text / engineering working / formulas</td><td><b>manual grading queue</b>: admin reads, scores, comments; user notified when graded</td></tr>
+</table>
+<p>Per-test settings: pass %, attempts allowed, shuffle, time limit, show-answers policy.
+Admin analytics: per-question difficulty, score distribution, completion funnel.</p>
+<h3>7.4 Dashboards · reminders · certificates</h3>
+<ul>
+<li><b>Staff "My training":</b> required courses, purpose, deadline countdown (red &lt; 7 days),
+progress ring per course, notification feed</li>
+<li><b>Admin dashboard:</b> completion % by course/department, overdue list, average scores,
+time-to-complete; Excel export</li>
+<li><b>Reminders:</b> rule per course (e.g. 14/7/1 days before deadline + overdue weekly) via
+in-system + email + LINE</li>
+<li><b>Certificate:</b> auto-PDF, bilingual TH/EN, ANCA logo + gradient band, name-surname,
+course name, completion date, certificate no. (AMS-TRN-2606-001), signature lines
+(Proposed/Approved) — downloadable by staff, re-printable by admin</li>
+<li><b>Visitor security:</b> visitor accounts see ONLY courses explicitly assigned to them — no
+employee data, no other modules; visitor attempts kept in the same audit log; optional expiry
+date on visitor accounts</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>8 · Document printing v2 (ISO 14001 paper records)</h2>
+<ul>
+<li><b>Exact-format guarantee:</b> สปส.1-03 and ล.ย.01 move from "reconstructed layout" to
+<b>overlay-on-original</b>: the real government form is the background image and the system prints
+the data at calibrated positions — the printout files identically to a hand-filled original.
+The job application (FM-HR-003) + the 20260612 additional document merge into ONE print set fed
+by ONE fill-in (the candidate enters data once).</li>
+<li><b>Template versioning:</b> each printable form is a template record (file + field-position
+map + version + effective date). When a standard changes you upload the new template version —
+old printouts stay reproducible, new prints use the new version. No code edit.</li>
+<li><b>Direct-print popup:</b> "🖨️ Print" opens the filled document in a popup that calls
+<code>window.print()</code> immediately (same pattern as the org-chart print built today) — no
+download-then-open step.</li>
+<li><b>Integrity statement before submit (candidate portal):</b> bilingual declaration the
+candidate must tick, e.g. "ข้าพเจ้าขอรับรองว่าข้อความข้างต้นเป็นความจริงทุกประการ หากปรากฏภายหลัง
+ว่าข้าพเจ้าปกปิดข้อเท็จจริงหรือให้ข้อความอันเป็นเท็จ ข้าพเจ้ายินยอมให้บริษัทเลิกจ้างได้ทันทีโดยไม่
+จ่ายค่าชดเชย ตามพระราชบัญญัติคุ้มครองแรงงาน พ.ศ. 2541 มาตรา 119(1)" — exact legal wording verified
+at build time (s.119(1) covers dishonest acts / intentional false statements; criminal-law threats
+are avoided as they could be unenforceable and intimidating).</li>
+<li><b>Completion checklist:</b> admin screen listing every employee × required document fields,
+% complete, missing-item drill-down, Excel export — tracks the paper-record readiness per ISO 14001.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2>9 · Car booking — fully inside the system</h2>
+<p>Replaces the Apps Script + Jira hub with native modules (Jira optional sync can be dropped):</p>
+<div class="flow">
+<span class="st b">Staff books (map page<br>kept: Leaflet/OSM, chips,<br>distance calc)</span><span class="ar">→</span>
+<span class="st y">Approval: L1 of staff<br>(or auto under N km —<br>admin setting)</span><span class="ar">→</span>
+<span class="st">Admin assigns car + driver<br>(availability check,<br>30-min buffer)</span><span class="ar">→</span>
+<span class="st g">Driver notified — LINE<br>@529aaynp push with job +<br>fuel estimate (price &amp; km/L<br>from Settings, not code)</span><span class="ar">→</span>
+<span class="st">Status: Request → Confirm →<br>On Process → Complete/Cancel<br>(your names kept)</span>
+</div>
+<ul>
+<li>Tables: <code>cars</code> (plate, model, seats, km/L, active), <code>drivers</code> (name, LINE
+userId), <code>car_bookings</code>, <code>car_settings</code> (fuel price ฿/L)</li>
+<li>Admin board: day/week calendar per car, conflict warnings, drag re-assign; daily 07:00 LINE
+schedule per driver; monthly km &amp; fuel report per car/department</li>
+<li>Visitor Portal keeps NO car booking (your instruction) — booking lives in its own module,
+capability <code>car.book</code> excluded from the visitor role</li>
+</ul>
+
+<h2>10 · Visitor entrance permit (Visitor Portal)</h2>
+<p>Visitor Portal becomes: job application + <b>entrance permit request</b> — visitor fills
+company/name/ID-passport, host employee, purpose, date/time, vehicle plate; host gets approval
+(email/LINE); security gets a daily permit list; printable permit slip with permit no. + QR.
+<span class="small">If you previously uploaded a permit form standard, send it again at build time
+and the printout will match it exactly (the earlier upload isn't retrievable from history).</span></p>
+
+<!-- ============================================================ -->
+<h2>11 · Unified approval framework (every module)</h2>
+<p>One engine (extending today's request_approvals) serving Leave, OT, Purchase, Stock issue,
+Resignation, Car booking, Entrance permit, Training sign-off:</p>
+<table>
+<tr><th>Channel</th><th>How</th></tr>
+<tr><td>In-system</td><td>approval queue page per user; one click approve/reject + note (exists today)</td></tr>
+<tr><td>Email (Outlook / general.anca@gmail.com)</td><td>notification on every step (exists) + <b>.eml drafts</b> where the user must send manually with attachment (ERP) + reminder digests (exists)</td></tr>
+<tr><td>LINE @529aaynp</td><td>Messaging-API push to the approver's LINE userId: summary + deep link <code>…/F_Leave_OT</code>; userId mapping = staff scans a QR to link their LINE to their Emp. No. once (link screen in My Profile)</td></tr>
+</table>
+<p class="small">LINE cannot do one-tap approve inside chat without a public webhook endpoint;
+the push carries a login link instead — honest scope. Webhook upgrade possible later via the LIFF
+app pattern from your CCM projects.</p>
+
+<h2>12 · RBAC additions (keeping the 7 roles intact)</h2>
+<table>
+<tr><th>New capability</th><th>visitor</th><th>viewer</th><th>supervisor</th><th>manager</th><th>finance</th><th>admin</th><th>super</th></tr>
+<tr><td>stock.issue_request / stock.manage</td><td>—</td><td>✔ / —</td><td>✔ / —</td><td>✔ / —</td><td>✔ / —</td><td>✔ / ✔</td><td>✔ / ✔</td></tr>
+<tr><td>attend.view_team / attend.upload</td><td>—</td><td>—</td><td>✔ / —</td><td>✔ / —</td><td>✔ / —</td><td>✔ / ✔</td><td>✔ / ✔</td></tr>
+<tr><td>resign.submit / resign.delegate</td><td>—</td><td>✔ / —</td><td>✔ / ✔</td><td>✔ / ✔</td><td>✔ / —</td><td>✔ / ✔</td><td>✔ / ✔</td></tr>
+<tr><td>train.take / train.manage / train.grade</td><td>✔(assigned) / — / —</td><td>✔ / — / —</td><td>✔ / — / —</td><td>✔ / — / —</td><td>✔ / — / —</td><td>✔ / ✔ / ✔</td><td>✔ / ✔ / ✔</td></tr>
+<tr><td>permit.request / permit.approve(host) / permit.admin</td><td>✔ / — / —</td><td>✔ / ✔ / —</td><td>✔ / ✔ / —</td><td>✔ / ✔ / —</td><td>✔ / ✔ / —</td><td>✔ / ✔ / ✔</td><td>✔ / ✔ / ✔</td></tr>
+<tr><td>docs.completion_checklist</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✔</td><td>✔</td></tr>
+</table>
+<p>Salary &amp; PDPA stay super-admin-only everywhere (incl. all new reports); visitors stay
+sealed inside Visitor Portal + assigned training; every new table writes to the same audit log.</p>
+
+<p class="small" style="margin-top:14px">End of blueprint · Reply with the sections you approve
+(and any changes) and the next phase gets built and tested against your real files.</p>
+</body></html>
