@@ -15,7 +15,11 @@ st.set_page_config = lambda *a, **k: None
 from lib.db import init_db, IS_POSTGRES
 from lib import auth, theme, i18n, nav as navmod
 
-init_db()
+@st.cache_resource
+def _boot_db():
+    init_db()        # runs once per app process, not on every rerun
+    return True
+_boot_db()
 theme.begin_run()                       # reset once-per-run chrome guard
 user = auth.current_user()
 
