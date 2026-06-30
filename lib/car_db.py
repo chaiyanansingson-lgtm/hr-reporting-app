@@ -57,6 +57,10 @@ def migrate():
     else:
         cur.execute("INSERT OR IGNORE INTO car_settings (key, value) "
                     "VALUES ('fuel_price_thb','35')")
+    # Persist the CREATEs/defaults before the ALTER loop — on Postgres a
+    # failing ALTER's rollback would otherwise wipe the uncommitted tables
+    # above (the lms_db UndefinedTable failure mode).
+    conn.commit()
     # --- costing layer (manual: km/tolls -> fuel -> total -> cost centre) ---
     for ddl in (
         "ALTER TABLE car_bookings ADD COLUMN km_actual REAL",

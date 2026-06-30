@@ -85,6 +85,10 @@ def migrate():
     cur.execute(f"""CREATE TABLE IF NOT EXISTS erp_budgets (
         id {SERIAL}, year INTEGER NOT NULL, department TEXT NOT NULL,
         budget_thb REAL NOT NULL DEFAULT 0)""")
+    # Persist the CREATEs before the ALTER loop — on Postgres a failing ALTER's
+    # rollback would otherwise wipe the uncommitted tables above (the lms_db
+    # UndefinedTable failure mode).
+    conn.commit()
     # additive columns (idempotent)
     for ddl in (
         "ALTER TABLE erp_products ADD COLUMN supplier_key TEXT",
