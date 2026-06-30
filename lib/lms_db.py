@@ -80,6 +80,12 @@ def migrate():
         done INTEGER NOT NULL DEFAULT 0, done_at TEXT)""")
     cur.execute("""CREATE UNIQUE INDEX IF NOT EXISTS ux_prog
                    ON lms_progress (enrollment_id, lesson_id)""")
+    # Persist the CREATEs BEFORE the ALTER loop. On Postgres a failing ALTER
+    # (e.g. "column already exists") triggers conn.rollback(), which would
+    # otherwise wipe every still-uncommitted table above — leaving core tables
+    # like lms_enrollments missing (UndefinedTable). Committing here isolates
+    # each subsequent ALTER's rollback to that ALTER alone.
+    conn.commit()
     for ddl in ("ALTER TABLE lms_lessons ADD COLUMN duration_min REAL DEFAULT 0",
                 "ALTER TABLE lms_lessons ADD COLUMN asset_path TEXT",
                 "ALTER TABLE lms_progress ADD COLUMN first_opened_at TEXT",
