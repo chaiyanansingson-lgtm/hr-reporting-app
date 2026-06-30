@@ -38,11 +38,12 @@ def migrate():
         created_by TEXT, created_at TEXT)""")
     cur.execute(f"""CREATE TABLE IF NOT EXISTS lms_lessons (
         id {SERIAL}, course_id INTEGER NOT NULL, seq INTEGER NOT NULL,
-        kind TEXT NOT NULL,              -- video | slides | test
+        kind TEXT NOT NULL,              -- video | slides | test | interactive
         title TEXT,
         youtube_id TEXT,                 -- video
-        duration_min REAL DEFAULT 0,     -- video length (server time-floor)
+        duration_min REAL DEFAULT 0,     -- video/interactive: server time-floor
         pages TEXT,                      -- slides: JSON [text,...]
+        asset_path TEXT,                 -- interactive: repo-relative .html path
         test_id INTEGER)""")
     cur.execute(f"""CREATE TABLE IF NOT EXISTS lms_tests (
         id {SERIAL}, course_id INTEGER NOT NULL, title TEXT,
@@ -80,6 +81,7 @@ def migrate():
     cur.execute("""CREATE UNIQUE INDEX IF NOT EXISTS ux_prog
                    ON lms_progress (enrollment_id, lesson_id)""")
     for ddl in ("ALTER TABLE lms_lessons ADD COLUMN duration_min REAL DEFAULT 0",
+                "ALTER TABLE lms_lessons ADD COLUMN asset_path TEXT",
                 "ALTER TABLE lms_progress ADD COLUMN first_opened_at TEXT",
                 "ALTER TABLE lms_progress ADD COLUMN flags INTEGER DEFAULT 0",
                 # DSD (กรมพัฒนาฝีมือแรงงาน) course metadata
@@ -163,16 +165,17 @@ def get_course(cid):
 
 
 def add_lesson(course_id, kind, title, youtube_id=None, pages=None,
-               test_id=None, duration_min=0):
+               test_id=None, duration_min=0, asset_path=None):
     conn = get_conn(); cur = conn.cursor()
     cur.execute(f"SELECT COALESCE(MAX(seq),0)+1 FROM lms_lessons "
                 f"WHERE course_id={PH}", (course_id,))
     seq = cur.fetchone()[0]
     cur.execute(f"""INSERT INTO lms_lessons (course_id, seq, kind, title,
-                    youtube_id, duration_min, pages, test_id)
-                    VALUES ({PH},{PH},{PH},{PH},{PH},{PH},{PH},{PH})""",
+                    youtube_id, duration_min, pages, asset_path, test_id)
+                    VALUES ({PH},{PH},{PH},{PH},{PH},{PH},{PH},{PH},{PH})""",
                 (course_id, seq, kind, title, youtube_id, duration_min,
-                 json.dumps(pages or [], ensure_ascii=False), test_id))
+                 json.dumps(pages or [], ensure_ascii=False),
+                 asset_path, test_id))
     conn.commit()
     if IS_POSTGRES:
         cur.execute("SELECT MAX(id) FROM lms_lessons"); return cur.fetchone()[0]

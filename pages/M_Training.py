@@ -101,6 +101,53 @@ setInterval(function(){{
 </script>""", height=490)
 
 
+import html as _html
+from pathlib import Path as _Path
+_REPO_ROOT = _Path(__file__).resolve().parent.parent
+
+
+def _interactive(asset_path, code):
+    """Embed a self-contained interactive trainer (HTML in
+    assets/welder_training/...) and reveal the server completion code only
+    when the trainer posts AMS_TRAINING_COMPLETE with passed=true. Mirrors
+    the video flow exactly: server code -> learner pastes -> verify_watch_code
+    (which also enforces the wall-clock time-floor when duration_min > 0)."""
+    p = (_REPO_ROOT / (asset_path or "")).resolve()
+    try:
+        inside = str(p).startswith(str(_REPO_ROOT))
+    except Exception:
+        inside = False
+    if not (asset_path and inside and p.is_file()):
+        st.error(f"⛔ ไม่พบไฟล์กิจกรรม / interactive file not found: "
+                 f"{asset_path or '—'} — วางไฟล์ไว้ใน assets/welder_training/ "
+                 f"แล้ว push ขึ้น repo")
+        return
+    trainer = p.read_text(encoding="utf-8", errors="replace")
+    srcdoc = _html.escape(trainer, quote=True)
+    components.html(f"""
+<div style="font-family:sans-serif">
+ <iframe srcdoc="{srcdoc}" allow="fullscreen" style="width:100%;height:680px;
+  border:1px solid #E4E8F0;border-radius:12px;background:#fff"></iframe>
+ <div id="ibar" style="font-size:13px;margin-top:8px;padding:10px;
+  border-radius:10px;background:#f4f6fb;color:#26303E">
+  🧩 ทำกิจกรรมให้ผ่านเกณฑ์ — โค้ดยืนยันจะปรากฏที่นี่เมื่อผ่าน /
+  complete the activity above; your completion code appears here on pass</div>
+</div>
+<script>
+window.addEventListener('message', function(ev){{
+  var d = ev.data || {{}};
+  if(d && d.type === 'AMS_TRAINING_COMPLETE' && d.passed){{
+    var pct = (typeof d.percent === 'number') ? Math.round(d.percent) : '';
+    document.getElementById('ibar').innerHTML =
+      '✅ ผ่านแล้ว' + (pct !== '' ? (' (' + pct + '%)') : '') +
+      '! โค้ดยืนยัน / Completion code: ' +
+      '<b style="font-size:18px;color:#715091;letter-spacing:2px">{code}</b>' +
+      ' — คัดลอกไปวางในช่องด้านล่าง';
+  }}
+}});
+</script>""", height=780, scrolling=True)
+
+
 # ====================================================== MY TRAINING
 with tabs[0]:
     ens = lms.my_enrollments(emp_key)
@@ -158,7 +205,7 @@ display:grid;place-items:center;font-weight:800;color:{ring_col}">{pct}%
                 icon = "✅" if done else ("🔓" if unlocked else "🔒")
                 st.markdown(f"**{icon} บทที่ {lesson['seq']}: "
                             f"{lesson['title']}** "
-                            f"({ {'video':'วิดีโอ','slides':'สไลด์','test':'แบบทดสอบ'}[lesson['kind']] })")
+                            f"({ {'video':'วิดีโอ','slides':'สไลด์','test':'แบบทดสอบ','interactive':'กิจกรรม'}[lesson['kind']] })")
                 if done or not unlocked:
                     if not unlocked:
                         st.caption("ปลดล็อกเมื่อจบบทก่อนหน้า / finish the "
@@ -285,6 +332,28 @@ display:grid;place-items:center;font-weight:800;color:{ring_col}">{pct}%
                                 st.error(f"ไม่ผ่าน {at['score']:g}/"
                                          f"{at['max_score']:g} "
                                          f"({pct0:.0f}%) — ลองใหม่ได้")
+                # ---------- interactive ----------
+                elif lesson["kind"] == "interactive":
+                    lms.mark_opened(e["id"], lesson["id"])   # server clock
+                    code = lms.watch_code(e["id"], lesson["id"])
+                    _interactive(lesson.get("asset_path"), code)
+                    if lesson.get("duration_min"):
+                        st.caption(f"⏱️ เวลาขั้นต่ำของกิจกรรม "
+                                   f"{lesson['duration_min']:g} นาที — "
+                                   f"เซิร์ฟเวอร์จะไม่รับโค้ดก่อนเวลาจริงครบ "
+                                   f"แม้โค้ดถูกต้อง")
+                    c1, c2 = st.columns([2, 1])
+                    inp = c1.text_input("โค้ดยืนยันจากกิจกรรม / Completion "
+                                        "code", key=f"ic{e['id']}_{lesson['id']}")
+                    if c2.button("ยืนยัน / Verify",
+                                 key=f"iv{e['id']}_{lesson['id']}"):
+                        ok, msg = lms.verify_watch_code(e["id"],
+                                                        lesson["id"], inp)
+                        if ok:
+                            st.success(msg + " — บทถัดไปปลดล็อก")
+                            st.rerun()
+                        else:
+                            st.error("⛔ " + msg)
             if e["status"] == "completed":
                 st.success(f"🎉 จบหลักสูตรแล้ว • ใบประกาศเลขที่ "
                            f"**{e['cert_no']}**")
@@ -405,10 +474,16 @@ if has_capability("train.manage"):
             st.markdown("**บทเรียน / Lessons**")
             for l in lms.lessons(cid):
                 st.write(f"- บทที่ {l['seq']} [{l['kind']}] {l['title']}")
-            lk = st.selectbox("เพิ่มบทเรียนชนิด", ["video", "slides", "test"])
+            lk = st.selectbox("เพิ่มบทเรียนชนิด",
+                              ["video", "slides", "test", "interactive"],
+                              format_func=lambda x: {
+                                  "video": "🎬 วิดีโอ / Video",
+                                  "slides": "📑 สไลด์ / Slides",
+                                  "test": "📝 แบบทดสอบ / Test",
+                                  "interactive": "🧩 กิจกรรม / Interactive"}[x])
             with st.form("lesson_form"):
                 lt = st.text_input("ชื่อบท / Lesson title")
-                yt = pgtext = None
+                yt = pgtext = asset_sel = None
                 dur_min = 0.0
                 if lk == "video":
                     yt = st.text_input("YouTube video ID (เช่น dQw4w9WgXcQ)")
@@ -419,6 +494,27 @@ if has_capability("train.manage"):
                     pgtext = st.text_area(
                         "เนื้อหาสไลด์ — คั่นหน้าด้วยบรรทัด `---` "
                         "(ใส่ HTML/รูปได้)", height=160)
+                elif lk == "interactive":
+                    import os as _os
+                    _adir = _REPO_ROOT / "assets" / "welder_training"
+                    _files = sorted(
+                        f"assets/welder_training/{f}"
+                        for f in (_os.listdir(_adir) if _adir.is_dir() else [])
+                        if f.lower().endswith(".html"))
+                    if _files:
+                        asset_sel = st.selectbox(
+                            "ไฟล์กิจกรรม / Trainer file "
+                            "(จาก assets/welder_training)", _files)
+                    else:
+                        asset_sel = st.text_input(
+                            "พาธไฟล์กิจกรรม เช่น "
+                            "assets/welder_training/Ch3_Symbols.html")
+                        st.caption("ยังไม่พบไฟล์ .html ใน "
+                                   "assets/welder_training/ — push ไฟล์ trainer "
+                                   "ขึ้น repo ก่อน แล้วรายการจะปรากฏอัตโนมัติ")
+                    dur_min = st.number_input(
+                        "เวลาขั้นต่ำ (นาที) — บังคับเวลาจริงฝั่งเซิร์ฟเวอร์ "
+                        "(0 = ไม่บังคับเวลา)", 0.0, 600.0, 0.0, 0.5)
                 else:
                     c1, c2, c3, c4 = st.columns(4)
                     trole = c1.selectbox("ชนิดข้อสอบ", ["pre", "post",
@@ -439,11 +535,20 @@ if has_capability("train.manage"):
                         pages = [p.strip() for p in
                                  (pgtext or "").split("---") if p.strip()]
                         lms.add_lesson(cid, "slides", lt, pages=pages)
+                    elif lk == "interactive":
+                        if not (asset_sel or "").strip():
+                            st.error("⛔ กรุณาเลือก/กรอกไฟล์กิจกรรมก่อน / "
+                                     "choose a trainer file first")
+                        else:
+                            lms.add_lesson(cid, "interactive", lt,
+                                           asset_path=asset_sel.strip(),
+                                           duration_min=dur_min)
+                            st.rerun()
                     else:
                         tid = lms.create_test(cid, lt, tpp, int(tat), tsa,
                                               role=trole)
                         lms.add_lesson(cid, "test", lt, test_id=tid)
-                    st.rerun()
+                        st.rerun()
             # question editor for test lessons
             test_lessons = [l for l in lms.lessons(cid)
                             if l["kind"] == "test"]
