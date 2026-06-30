@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>บทที่ 4 · เครื่องมือวัดและการเตรียมงาน | Chapter 4 · Measuring & joint prep</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --white:#FFFFFF; --ink:#16243D; --blue:#0E5FA8; --purple:#6A2C91;
+    --magenta:#D1108A; --steel:#5C6B7C; --surface:#F4F6F9; --line:#E2E7EE;
+    --plate:#CFD8E3; --ok:#1F9D6B; --ok-soft:#E7F5EF; --warn:#E08A1E; --warn-soft:#FBEEDD;
+    --shadow:0 1px 2px rgba(22,36,61,.06), 0 8px 24px rgba(22,36,61,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:'Sarabun','Noto Sans Thai',Tahoma,sans-serif;
+    background:var(--surface); color:var(--ink);
+    -webkit-font-smoothing:antialiased; line-height:1.45;
+    padding:18px 14px 40px;
+  }
+  .wrap{max-width:880px;margin:0 auto}
+  .head{background:var(--white);border:1px solid var(--line);border-radius:18px;padding:18px 18px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden;}
+  .head::after{content:"";position:absolute;top:-26px;right:-26px;width:120px;height:120px;background:conic-gradient(from 200deg, var(--blue), var(--purple), var(--magenta), var(--blue));clip-path:polygon(100% 0,100% 100%,0 0);opacity:.10;}
+  .eyebrow{font-size:11.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--magenta);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .eyebrow .tri{width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:10px solid var(--magenta)}
+  h1{font-size:clamp(19px,3.6vw,26px);line-height:1.2;margin:8px 0 2px;font-weight:800;color:var(--ink)}
+  h1 .en{display:block;font-size:clamp(13px,2.2vw,15px);font-weight:600;color:var(--steel);margin-top:3px}
+  .sub{font-size:13px;color:var(--steel);margin-top:6px}
+  .scorebar{display:flex;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap}
+  .scorechip{display:inline-flex;align-items:baseline;gap:7px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-weight:700;}
+  .scorechip b{font-size:18px;color:var(--blue)}
+  .scorechip span{font-size:12px;color:var(--steel);font-weight:600}
+  .track{flex:1;min-width:140px;height:9px;background:var(--line);border-radius:999px;overflow:hidden}
+  .track i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--purple),var(--magenta));transition:width .45s cubic-bezier(.2,.8,.2,1)}
+  .tabs{display:flex;gap:8px;margin:18px 0 14px}
+  .tab{flex:1;cursor:pointer;border:1px solid var(--line);background:var(--white);border-radius:12px;padding:12px 10px;text-align:center;font-weight:700;font-size:13.5px;color:var(--steel);transition:.18s; line-height:1.25;}
+  .tab .en{display:block;font-size:11px;font-weight:600;opacity:.8;margin-top:2px}
+  .tab[aria-selected="true"]{color:var(--white);background:linear-gradient(135deg,var(--blue),var(--purple));border-color:transparent;box-shadow:var(--shadow)}
+  .tab:focus-visible{outline:3px solid var(--magenta);outline-offset:2px}
+  .panel{display:none}
+  .panel.on{display:block;animation:fade .35s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .hint{background:var(--white);border:1px dashed var(--line);border-radius:12px;padding:11px 14px;font-size:12.5px;color:var(--steel);margin-bottom:14px;display:flex;gap:9px;align-items:flex-start}
+  .hint .tri{flex:none;margin-top:3px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid var(--blue)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  @media(max-width:560px){.grid{grid-template-columns:1fr;gap:16px}}
+  .col h2{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--steel);margin:0 0 10px}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .names{display:flex;flex-direction:column;gap:10px}
+  .card{cursor:pointer;background:var(--white);border:1.5px solid var(--line);border-radius:14px;padding:10px 8px 9px;text-align:center;transition:transform .12s, border-color .15s, box-shadow .15s;display:flex;flex-direction:column;align-items:center;gap:6px;min-height:96px;justify-content:center;}
+  .card svg{width:74px;height:50px}
+  .card .cap{font-size:10.5px;color:var(--steel);font-weight:600;line-height:1.2}
+  .card:focus-visible,.name:focus-visible{outline:3px solid var(--magenta);outline-offset:2px}
+  .card.sel{border-color:var(--blue);box-shadow:0 0 0 3px rgba(14,95,168,.16);transform:translateY(-2px)}
+  .name{cursor:pointer;background:var(--white);border:1.5px solid var(--line);border-radius:12px;padding:11px 13px;font-weight:700;font-size:13.5px;text-align:left;transition:transform .12s,border-color .15s,box-shadow .15s;display:flex;align-items:center;gap:10px;}
+  .name .en{display:block;font-size:11px;font-weight:600;color:var(--steel);margin-top:1px}
+  .name.sel{border-color:var(--purple);box-shadow:0 0 0 3px rgba(106,44,145,.16);transform:translateY(-2px)}
+  .card.done,.name.done{border-color:var(--ok);background:var(--ok-soft);cursor:default;color:var(--ink);}
+  .card.done .cap{color:var(--ok)}
+  .badge-tri{flex:none;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:12px solid var(--ok);display:none}
+  .name.done .badge-tri{display:block}
+  .card.done svg{opacity:.85}
+  @media (prefers-reduced-motion: no-preference){.shake{animation:shake .4s}}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+  .rl{stroke:#5C6B7C;stroke-width:1.6;fill:none}
+  .ln{stroke:#16243D;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .fl{fill:#16243D}
+  .pl{fill:#CFD8E3;stroke:#16243D;stroke-width:1.6}
+  .wm{fill:#AEBCCB;stroke:#8A98A8;stroke-width:1}
+  .s-ok{fill:#1F9D6B}.s-warn{fill:#E08A1E}.s-red{fill:#D14A3A}.s-blue{fill:#0E5FA8}.s-cu{fill:#C68A5B}.s-mag{fill:#D1108A}.s-tg{fill:#717784}.s-steel{fill:#5C6B7C}.s-cer{fill:#ECE4D4;stroke:#8A98A8;stroke-width:1.1}.s-flux{fill:#D8C7A8}.s-slag{fill:#9C7A52}
+  .st-blue{stroke:#0E5FA8;fill:none;stroke-width:2;stroke-linecap:round}.st-ok{stroke:#1F9D6B;fill:none;stroke-width:2;stroke-linecap:round}.st-warn{stroke:#E08A1E;fill:none;stroke-width:2;stroke-linecap:round}.st-red{stroke:#D14A3A;fill:none;stroke-width:2;stroke-linecap:round}
+  .badge{fill:#EAF2FA;stroke:#0E5FA8;stroke-width:1.4}.badge2{fill:#F4F6F9;stroke:#5C6B7C;stroke-width:1.3}
+  .bt{font-family:'Sarabun',sans-serif;font-weight:800;font-size:13px;fill:#0E5FA8}.bt2{font-family:'Sarabun',sans-serif;font-weight:800;font-size:12px;fill:#16243D}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:11px 18px;border-radius:999px;font-weight:600;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:30;box-shadow:0 10px 30px rgba(0,0,0,.2);max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.bad{background:var(--warn)}
+  .done-card{background:var(--white);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:26px 22px;text-align:center;margin-top:20px;display:none;}
+  .done-card.show{display:block;animation:fade .4s ease}
+  .ring{width:118px;height:118px;margin:0 auto 14px;position:relative}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .pct{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ring .pct b{font-size:30px;font-weight:800;color:var(--ink);line-height:1}
+  .ring .pct s{font-size:11px;color:var(--steel);text-decoration:none;font-weight:600;margin-top:2px}
+  .verdict{font-size:18px;font-weight:800;margin:4px 0 2px}
+  .verdict.pass{color:var(--ok)} .verdict.fail{color:var(--warn)}
+  .verdict .en{display:block;font-size:12.5px;font-weight:600;color:var(--steel);margin-top:2px}
+  .btn{margin-top:16px;cursor:pointer;border:none;border-radius:12px;padding:12px 22px;font-weight:700;font-size:13.5px;background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff;font-family:inherit;}
+  .btn:focus-visible{outline:3px solid var(--magenta);outline-offset:2px}
+  .foot{margin-top:22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--steel)}
+  .foot .wm-t{font-weight:700;letter-spacing:.04em;color:var(--ink)}
+  .foot .sync{display:flex;align-items:center;gap:7px}
+  .foot .dot{width:7px;height:7px;border-radius:50%;background:var(--line)}
+  .foot .dot.live{background:var(--ok)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="head">
+    <div class="eyebrow"><span class="tri"></span> AMS · งานเชื่อม / Welding · บทที่ 4 / Chapter 4</div>
+    <h1>เครื่องมือวัดและการเตรียมงาน<span class="en">Measuring & joint prep</span></h1>
+    <p class="sub">แบบฝึกหัดเชิงโต้ตอบ — แตะเพื่อจับคู่ · Interactive practice — tap to match · เกณฑ์ผ่าน 70% / Pass mark 70%</p>
+    <div class="scorebar">
+      <div class="scorechip"><b id="sc">0</b><span>/ 11 คู่ · pairs</span></div>
+      <div class="track"><i id="bar"></i></div>
+    </div>
+  </header>
+  <nav class="tabs" role="tablist" aria-label="โมดูล / Modules">
+    <button class="tab" role="tab" aria-selected="true" data-tab="m1" id="tab-m1">เครื่องมือวัด<span class="en">Tools · 6</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="m2" id="tab-m2">ขั้นตอนเตรียมงาน<span class="en">Prep steps · 5</span></button>
+  </nav>
+  <section class="panel on" id="panel-m1" role="tabpanel" aria-labelledby="tab-m1">
+    <div class="hint"><span class="tri"></span><div>แตะเครื่องมือ แล้วจับคู่ชื่อ<br><span style="opacity:.85">Tap the tool, then match its name.</span></div></div>
+    <div class="grid">
+      <div class="col"><h2>เครื่องมือ / Tool</h2><div class="cards" id="m1-cards"></div></div>
+      <div class="col"><h2>ชื่อ / Name</h2><div class="names" id="m1-names"></div></div>
+    </div>
+  </section>
+  <section class="panel" id="panel-m2" role="tabpanel" aria-labelledby="tab-m2">
+    <div class="hint"><span class="tri"></span><div>แตะภาพขั้นตอน แล้วจับคู่ชื่อ<br><span style="opacity:.85">Tap the step, then match its name.</span></div></div>
+    <div class="grid">
+      <div class="col"><h2>ขั้นตอน / Step</h2><div class="cards" id="m2-cards"></div></div>
+      <div class="col"><h2>ชื่อ / Name</h2><div class="names" id="m2-names"></div></div>
+    </div>
+  </section>
+  <section class="done-card" id="done">
+    <div class="ring">
+      <svg width="118" height="118" viewBox="0 0 118 118">
+        <circle cx="59" cy="59" r="50" fill="none" stroke="#E2E7EE" stroke-width="11"/>
+        <circle id="ringfill" cx="59" cy="59" r="50" fill="none" stroke="url(#g)" stroke-width="11" stroke-linecap="round" stroke-dasharray="314" stroke-dashoffset="314"/>
+        <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0E5FA8"/><stop offset=".5" stop-color="#6A2C91"/><stop offset="1" stop-color="#D1108A"/></linearGradient></defs>
+      </svg>
+      <div class="pct"><b id="pctnum">0%</b><s>คะแนน / Score</s></div>
+    </div>
+    <div class="verdict" id="verdict"></div>
+    <button class="btn" id="reset">เริ่มทำใหม่ / Try again</button>
+  </section>
+  <div class="foot">
+    <span class="wm-t">ANCA Manufacturing Solutions (Thailand)</span>
+    <span class="sync"><span class="dot" id="syncdot"></span><span id="synctxt">ยังไม่ส่งผล / Result not sent</span></span>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+(function(){
+  "use strict";
+  var ART1={"tape":"<svg viewBox=\"0 0 60 40\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"13\" y=\"15\" width=\"26\" height=\"18\" rx=\"4\" class=\"pl\"/><circle cx=\"26\" cy=\"24\" r=\"5\" class=\"rl\"/><rect x=\"38\" y=\"22\" width=\"11\" height=\"5\" class=\"fl\"/><line x1=\"44\" y1=\"22\" x2=\"44\" y2=\"27\" class=\"rl\"/></svg>","vernier":"<svg viewBox=\"0 0 60 40\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"10\" y=\"19\" width=\"42\" height=\"5\" class=\"pl\"/><rect x=\"14\" y=\"9\" width=\"4\" height=\"12\" class=\"fl\"/><rect x=\"34\" y=\"9\" width=\"4\" height=\"17\" class=\"fl\"/><rect x=\"34\" y=\"9\" width=\"12\" height=\"4\" class=\"pl\"/></svg>","square":"<svg viewBox=\"0 0 60 40\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"16\" y=\"8\" width=\"6\" height=\"26\" class=\"pl\"/><rect x=\"16\" y=\"28\" width=\"28\" height=\"6\" class=\"fl\"/></svg>","protractor":"<svg viewBox=\"0 0 60 40\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M14,31 A16,16 0 0,1 46,31 Z\" class=\"pl\"/><line x1=\"30\" y1=\"31\" x2=\"30\" y2=\"16\" class=\"rl\"/><line x1=\"30\" y1=\"31\" x2=\"44\" y2=\"23\" class=\"rl\"/><line x1=\"30\" y1=\"31\" x2=\"16\" y2=\"23\" class=\"rl\"/></svg>","weldgauge":"<svg viewBox=\"0 0 60 40\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"15\" y=\"12\" width=\"30\" height=\"16\" rx=\"2\" class=\"pl\"/><polygon points=\"30,28 38,28 30,18\" class=\"wm\"/><line x1=\"15\" y1=\"20\" x2=\"45\" y2=\"20\" class=\"rl\"/></svg>","feeler":"<svg viewBox=\"0 0 60 40\" xmlns=\"http://www.w3.org/2000/svg\"><circle cx=\"16\" cy=\"20\" r=\"3\" class=\"fl\"/><line x1=\"16\" y1=\"20\" x2=\"47\" y2=\"11\" class=\"ln\"/><line x1=\"16\" y1=\"20\" x2=\"47\" y2=\"18\" class=\"ln\"/><line x1=\"16\" y1=\"20\" x2=\"47\" y2=\"27\" class=\"ln\"/></svg>"};
+  var ART2={"clean":"<svg viewBox=\"0 0 60 40\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"13\" y=\"18\" width=\"18\" height=\"6\" rx=\"1\" class=\"pl\"/><line x1=\"31\" y1=\"18\" x2=\"40\" y2=\"13\" class=\"ln\"/><line x1=\"31\" y1=\"21\" x2=\"41\" y2=\"16\" class=\"ln\"/><line x1=\"31\" y1=\"24\" x2=\"40\" y2=\"21\" class=\"ln\"/><line x1=\"31\" y1=\"27\" x2=\"38\" y2=\"25\" class=\"ln\"/></svg>","bevel":"<svg viewBox=\"0 0 60 40\" xmlns=\"http://www.w3.org/2000/svg\"><polygon points=\"16,30 44,30 44,16 30,16\" class=\"pl\"/><path d=\"M30,16 A14,14 0 0,1 38,24\" class=\"st-warn\"/></svg>","fitup":"<svg viewBox=\"0 0 60 40\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"12\" y=\"16\" width=\"15\" height=\"12\" class=\"pl\"/><rect x=\"33\" y=\"16\" width=\"15\" height=\"12\" class=\"pl\"/><line x1=\"20\" y1=\"32\" x2=\"27\" y2=\"32\" class=\"st-blue\"/><polygon points=\"27,32 23.9,33.5 23.9,30.5\" class=\"s-blue\"/><line x1=\"40\" y1=\"32\" x2=\"33\" y2=\"32\" class=\"st-blue\"/><polygon points=\"33,32 36.1,30.5 36.1,33.5\" class=\"s-blue\"/></svg>","tack":"<svg viewBox=\"0 0 60 40\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"12\" y=\"16\" width=\"16\" height=\"12\" class=\"pl\"/><rect x=\"32\" y=\"16\" width=\"16\" height=\"12\" class=\"pl\"/><circle cx=\"30\" cy=\"19\" r=\"2\" class=\"s-warn\"/><circle cx=\"30\" cy=\"25\" r=\"2\" class=\"s-warn\"/></svg>","gap":"<svg viewBox=\"0 0 60 40\" xmlns=\"http://www.w3.org/2000/svg\"><rect x=\"12\" y=\"16\" width=\"15\" height=\"12\" class=\"pl\"/><rect x=\"33\" y=\"16\" width=\"15\" height=\"12\" class=\"pl\"/><rect x=\"28\" y=\"17\" width=\"4\" height=\"10\" class=\"s-blue\"/></svg>"};
+  var M1=[{"id":"tape","th":"ตลับเมตร","en":"tape measure"},{"id":"vernier","th":"เวอร์เนียคาลิปเปอร์","en":"vernier caliper"},{"id":"square","th":"ฉากเหล็ก","en":"try square"},{"id":"protractor","th":"เกจวัดมุม","en":"bevel / protractor"},{"id":"weldgauge","th":"เกจวัดแนวเชื่อม","en":"weld gauge"},{"id":"feeler","th":"ฟีลเลอร์เกจ","en":"feeler gauge"}];
+  var M2=[{"id":"clean","th":"ทำความสะอาด/แปรง","en":"clean / brush"},{"id":"bevel","th":"ลบมุม/บาก","en":"bevel / grind"},{"id":"fitup","th":"จัดแนว/ประกบ","en":"fit-up / align"},{"id":"tack","th":"เชื่อมยึด (แทค)","en":"tack weld"},{"id":"gap","th":"ตรวจระยะห่าง","en":"check the gap"}];
+  var TOTAL = M1.length + M2.length;
+  var matched = 0, sel = null;
+  function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
+  function $(id){return document.getElementById(id);}
+  var toast=$("toast"),toastTimer=null;
+  function flash(msg,bad){toast.textContent=msg;toast.className="toast show"+(bad?" bad":"");clearTimeout(toastTimer);toastTimer=setTimeout(function(){toast.className="toast";},1300);}
+  function buildModule(prefix, data, art){
+    var cardWrap=$(prefix+"-cards"), nameWrap=$(prefix+"-names");
+    shuffle(data).forEach(function(item){
+      var c=document.createElement("button");
+      c.className="card";c.type="button";c.dataset.pair=item.id;c.dataset.col="card";
+      c.setAttribute("aria-label",item.en);
+      c.innerHTML=art[item.id]+'<span class="cap">'+item.en+'</span>';
+      c.addEventListener("click",function(){pick("card",item.id,c);});
+      cardWrap.appendChild(c);
+    });
+    shuffle(data).forEach(function(item){
+      var n=document.createElement("button");
+      n.className="name";n.type="button";n.dataset.pair=item.id;n.dataset.col="name";
+      n.innerHTML='<span class="badge-tri"></span><span>'+item.th+'<span class="en">'+item.en+'</span></span>';
+      n.addEventListener("click",function(){pick("name",item.id,n);});
+      nameWrap.appendChild(n);
+    });
+  }
+  function clearSel(){ if(sel&&sel.el){sel.el.classList.remove("sel");} sel=null; }
+  function pick(col,id,el){
+    if(el.classList.contains("done")) return;
+    if(sel&&sel.el===el){ clearSel(); return; }
+    if(!sel || sel.col===col){ if(sel&&sel.el) sel.el.classList.remove("sel"); el.classList.add("sel"); sel={col:col,id:id,el:el}; return; }
+    var a=sel, b={col:col,id:id,el:el};
+    if(a.id===b.id){
+      a.el.classList.remove("sel"); a.el.classList.add("done"); b.el.classList.add("done");
+      a.el.disabled=true; b.el.disabled=true; sel=null; matched++; updateScore();
+      flash("ถูกต้อง! / Correct  ▲");
+      if(matched===TOTAL) finish();
+    } else {
+      var wrong=b.el; a.el.classList.remove("sel"); wrong.classList.add("shake");
+      setTimeout(function(){wrong.classList.remove("shake");},420); clearSel();
+      flash("ยังไม่ตรง ลองใหม่ / Not a match — try again", true);
+    }
+  }
+  function updateScore(){ $("sc").textContent=matched; $("bar").style.width=(matched/TOTAL*100)+"%"; }
+  function finish(){
+    var pct=Math.round(matched/TOTAL*100), pass=pct>=70;
+    $("pctnum").textContent=pct+"%";
+    var off=314-(314*pct/100);
+    $("ringfill").style.transition="stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1)";
+    requestAnimationFrame(function(){ $("ringfill").style.strokeDashoffset=off; });
+    var v=$("verdict"); v.className="verdict "+(pass?"pass":"fail");
+    v.innerHTML=(pass?"ผ่านเกณฑ์ ✓":"ยังไม่ผ่านเกณฑ์")+'<span class="en">'+(pass?"Passed — meets the 70% standard":"Below 70% — review and retry")+'</span>';
+    $("done").classList.add("show"); $("done").scrollIntoView({behavior:"smooth",block:"center"});
+    var result={module:"welder-ch4-measure", correct:matched, total:TOTAL, percent:pct, passed:pass, ts:Date.now()};
+    window.AMS_TRAINING_RESULT=result;
+    try{ if(typeof window.onTrainingComplete==="function") window.onTrainingComplete(result); }catch(e){}
+    try{ window.parent && window.parent.postMessage({type:"AMS_TRAINING_COMPLETE",payload:result},"*"); }catch(e){}
+    $("syncdot").classList.add("live"); $("synctxt").textContent="ส่งผลให้ M Training แล้ว / Result sent to M Training";
+  }
+  document.querySelectorAll(".tab").forEach(function(t){
+    t.addEventListener("click",function(){
+      document.querySelectorAll(".tab").forEach(function(x){x.setAttribute("aria-selected","false");});
+      t.setAttribute("aria-selected","true");
+      document.querySelectorAll(".panel").forEach(function(p){p.classList.remove("on");});
+      $("panel-"+t.dataset.tab).classList.add("on"); clearSel();
+    });
+  });
+  $("reset").addEventListener("click",function(){
+    matched=0; clearSel();
+    ["m1-cards","m1-names","m2-cards","m2-names"].forEach(function(id){$(id).innerHTML="";});
+    $("done").classList.remove("show"); $("ringfill").style.strokeDashoffset="314";
+    $("syncdot").classList.remove("live"); $("synctxt").textContent="ยังไม่ส่งผล / Result not sent";
+    window.AMS_TRAINING_RESULT=null; init(); document.querySelector('[data-tab="m1"]').click();
+  });
+  function init(){ buildModule("m1",M1,ART1); buildModule("m2",M2,ART2); updateScore(); }
+  init();
+})();
+</script>
+</body>
+</html>
