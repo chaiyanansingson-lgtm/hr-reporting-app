@@ -21,38 +21,10 @@ IS_POSTGRES = bool(_DB_URL)
 if IS_POSTGRES:
     import psycopg2
     import psycopg2.extras
-    from psycopg2 import extensions as _pg_ext
-
-    # TCP keepalives so a reused connection survives idle gaps to Supabase
-    # (the database is in Singapore; this keeps the socket alive between clicks).
-    _PG_KW = dict(keepalives=1, keepalives_idle=30,
-                  keepalives_interval=10, keepalives_count=5)
-
-    def _new_pg_conn():
-        return psycopg2.connect(_DB_URL, **_PG_KW)
 
     def get_conn():
-        # Reuse ONE warm connection per Streamlit session instead of opening a
-        # brand-new connection — a full TCP + TLS handshake to Singapore — on
-        # every single query. That repeated handshake (several network
-        # round-trips each) was what made every button press slow. The reuse
-        # check below is purely local (conn.closed), so it costs no round-trip.
-        try:
-            import streamlit as st
-            c = st.session_state.get("_pgc")
-            if c is not None and c.closed == 0:
-                # If a previous query failed and left the transaction aborted,
-                # clear it so this call isn't blocked (only after an error).
-                if c.get_transaction_status() == _pg_ext.TRANSACTION_STATUS_INERROR:
-                    c.rollback()
-                return c
-            c = _new_pg_conn()
-            st.session_state["_pgc"] = c
-            return c
-        except Exception:
-            # No active Streamlit session (rare — e.g. a background call):
-            # fall back to a fresh connection.
-            return _new_pg_conn()
+        conn = psycopg2.connect(_DB_URL)
+        return conn
 else:
     import sqlite3
 
@@ -83,51 +55,39 @@ def secret(section, key=None, default=""):
 
 
 def init_db():
-    """Called once from app.py on boot. Idempotent."""
-    from lib import auth, rbac_seed
-    auth.migrate()
-    rbac_seed.seed()
-    from lib import employee_db
-    employee_db.migrate()
-    from lib import approval_db
-    approval_db.migrate()
-    from lib import erp_db
-    erp_db.migrate()
-    from lib import car_db
-    car_db.migrate()
-    from lib import permit_db
-    permit_db.migrate()
-    from lib import stock_db
-    stock_db.migrate()
-    from lib import attendance_db
-    attendance_db.migrate()
-    from lib import resign_db
-    resign_db.migrate()
-    from lib import lms_db
-    lms_db.migrate()
-    from lib import doc_numbers
-    doc_numbers.migrate()
-    from lib import feature_grants
-    feature_grants.migrate()
-    from lib import approval_rules
-    approval_rules.migrate()
-    from lib import leave_config
-    leave_config.migrate()
-    from lib import doc_templates
-    doc_templates.migrate()
-    from lib import working_hours_db
-    working_hours_db.migrate()
-    from lib import weekly_metrics
-    weekly_metrics.migrate()
-    from lib import announce_db
-    announce_db.migrate()
-    from lib import timesheet_db
-    timesheet_db.migrate()
-    from lib import kpi_calc
-    kpi_calc.migrate()
-    from lib import ot_salary_db
-    ot_salary_db.migrate()
-    from lib import upload_log
-    upload_log.migrate()
-    from lib import video_quiz_db
-    video_quiz_db.migrate()
+    """Called once from app.py on boot. Idempotent AND resilient: each step
+    runs in isolation so a failure in one module's migrate() can no longer
+    abort the whole sequence and skip every migration after it (which left
+    e.g. the LMS tables uncreated -> UndefinedTable). Failures are collected
+    and surfaced rather than silently swallowed."""
+    import importlib
+    steps = [
+        ("auth", "migrate"), ("rbac_seed", "seed"),
+        ("employee_db", "migrate"), ("approval_db", "migrate"),
+        ("erp_db", "migrate"), ("car_db", "migrate"),
+        ("permit_db", "migrate"), ("stock_db", "migrate"),
+        ("attendance_db", "migrate"), ("resign_db", "migrate"),
+        ("lms_db", "migrate"), ("doc_numbers", "migrate"),
+        ("feature_grants", "migrate"), ("approval_rules", "migrate"),
+        ("leave_config", "migrate"), ("doc_templates", "migrate"),
+        ("working_hours_db", "migrate"), ("weekly_metrics", "migrate"),
+        ("announce_db", "migrate"), ("timesheet_db", "migrate"),
+        ("kpi_calc", "migrate"), ("ot_salary_db", "migrate"),
+        ("upload_log", "migrate"), ("video_quiz_db", "migrate"),
+    ]
+    errors = []
+    for mod_name, fn_name in steps:
+        try:
+            mod = importlib.import_module(f"lib.{mod_name}")
+            getattr(mod, fn_name)()
+        except Exception as ex:
+            errors.append(f"{mod_name}.{fn_name}() -> {type(ex).__name__}: {ex}")
+    if errors:
+        try:
+            import streamlit as st
+            st.warning("ภาวะเริ่มต้นฐานข้อมูลบางส่วนล้มเหลว (ระบบยังทำงานต่อ) "
+                       "/ some DB init steps failed (app continued):\n- "
+                       + "\n- ".join(errors))
+        except Exception:
+            for e in errors:
+                print("[init_db] step failed (continued):", e)

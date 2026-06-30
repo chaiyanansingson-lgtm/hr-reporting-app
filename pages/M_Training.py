@@ -21,6 +21,22 @@ user = current_user(); me = user["username"]
 rec = edb.get_record(emp_no=str(user.get("emp_no") or "")) or {}
 emp_key = str(user.get("emp_no") or f"user:{me}")
 
+
+# Self-heal: ensure the LMS tables exist even if app.py's init_db() aborted
+# before reaching lms_db.migrate() (a failing earlier migration would skip it).
+# Runs once per server process; idempotent (CREATE ... IF NOT EXISTS).
+@st.cache_resource(show_spinner=False)
+def _ensure_lms_schema():
+    lms.migrate()
+    return True
+
+
+try:
+    _ensure_lms_schema()
+except Exception as _e:
+    st.error(f"⛔ เตรียมตารางระบบอบรมไม่สำเร็จ / could not initialise the "
+             f"training tables: {_e}")
+
 st.title("🎓 ระบบอบรม / Training")
 
 tab_names = ["📚 หลักสูตรของฉัน / My training"]
