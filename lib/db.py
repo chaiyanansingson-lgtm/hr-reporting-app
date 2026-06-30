@@ -21,10 +21,38 @@ IS_POSTGRES = bool(_DB_URL)
 if IS_POSTGRES:
     import psycopg2
     import psycopg2.extras
+    from psycopg2 import extensions as _pg_ext
+
+    # TCP keepalives so a reused connection survives idle gaps to Supabase
+    # (the database is in Singapore; this keeps the socket alive between clicks).
+    _PG_KW = dict(keepalives=1, keepalives_idle=30,
+                  keepalives_interval=10, keepalives_count=5)
+
+    def _new_pg_conn():
+        return psycopg2.connect(_DB_URL, **_PG_KW)
 
     def get_conn():
-        conn = psycopg2.connect(_DB_URL)
-        return conn
+        # Reuse ONE warm connection per Streamlit session instead of opening a
+        # brand-new connection — a full TCP + TLS handshake to Singapore — on
+        # every single query. That repeated handshake (several network
+        # round-trips each) was what made every button press slow. The reuse
+        # check below is purely local (conn.closed), so it costs no round-trip.
+        try:
+            import streamlit as st
+            c = st.session_state.get("_pgc")
+            if c is not None and c.closed == 0:
+                # If a previous query failed and left the transaction aborted,
+                # clear it so this call isn't blocked (only after an error).
+                if c.get_transaction_status() == _pg_ext.TRANSACTION_STATUS_INERROR:
+                    c.rollback()
+                return c
+            c = _new_pg_conn()
+            st.session_state["_pgc"] = c
+            return c
+        except Exception:
+            # No active Streamlit session (rare — e.g. a background call):
+            # fall back to a fresh connection.
+            return _new_pg_conn()
 else:
     import sqlite3
 
