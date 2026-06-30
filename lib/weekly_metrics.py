@@ -37,7 +37,7 @@ DEFAULT_CC_MAP = {
 _MONTHS = {"Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
            "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12}
 
-DEFAULTS = {"daily_hours": "8", "working_days": "5", "ot_target": "0.28",
+DEFAULTS = {"daily_hours": "6.99", "working_days": "5", "ot_target": "0.28",
             "absent_target": "0.025",
             "exclude_leave": "annual,offsite_work,offsite_train"}
 
@@ -318,15 +318,22 @@ def trend(n=4):
 
 
 def overall(week_label):
-    """Org totals + overall OT%/Absent% for a week. The percentages are a
-    working-hours-weighted average of the per-department values (which carry the
-    FY-tracker numbers), falling back to hours-derived when no % is present —
-    this keeps the summary cards consistent with the per-department chart lines.
+    """Org totals + overall OT%/Absent% for a week. When the week carries real
+    working hours (a live computed week) the headline is derived directly from
+    the totals — OT% = OT/(OT+Working), Absent% = Leave/Working (organisation-
+    relative) — so the summary cards tie out to the Weekly Metric Report and to
+    the per-department chart lines. Seeded history weeks (percentages only) fall
+    back to a working-hours-weighted average of the per-department values.
     """
     rows = week_data(week_label)
     w = sum(r["working"] or 0 for r in rows)
     o = sum(r["ot"] or 0 for r in rows)
     lv = sum(r["leave"] or 0 for r in rows)
+
+    if w > 0:
+        return {"working": w, "ot": o, "leave": lv,
+                "ot_pct": (o / (o + w)) if (o + w) else None,
+                "absent_pct": lv / w}
 
     def _wavg(key, fallback):
         num = den = 0.0
@@ -492,45 +499,100 @@ def seed_file(file_bytes):
         return ("report",) + tuple(seed_from_report(file_bytes))
     except Exception:
         return ("fy",) + tuple(seed_from_fy(file_bytes))
-def compute_week(week_label, date_from, date_to, source="computed"):
-    """Compute weekly metrics per department from the active timesheet for the
-    date window [date_from, date_to] (ISO 'YYYY-MM-DD').
+# Map exclude_leave tokens to the Thai leave-type names that appear in the
+# leave-request report. "annual" is in the leave_config registry; the two
+# off-site types are present-not-absent activities discovered from the data.
+_EXCLUDE_TH = {
+    "annual": "ลาพักร้อน",
+    "offsite_work": "ปฏิบัติงานนอกสถานที่",
+    "offsite_train": "อบรมนอกสถานที่",
+}
 
-    Working / OT / Leave HOURS are summed from the actual report rows (the 3 HR
-    reports). OT% / Absent% that already exist for the week (e.g. seeded from the
-    FY tracker) are PRESERVED — they are only derived from the hours as a
-    fallback when the week has no percentage yet. dept comes from the MASTER
-    cost-centre (column G). Returns the number of departments written."""
+
+def _excluded_leave_types():
+    """Leave-type names (as written in the report) that do NOT count toward
+    absenteeism — annual + off-site work/training by default, configurable via
+    the exclude_leave setting. Accepts either tokens or raw Thai names."""
+    out = set()
+    for tok in get_settings()["exclude_leave"].split(","):
+        tok = tok.strip()
+        if tok:
+            out.add(_EXCLUDE_TH.get(tok, tok))
+    return out
+
+
+def compute_week(week_label, date_from, date_to, source="computed"):
+    """Compute weekly metrics per department for the window [date_from, date_to]
+    (ISO 'YYYY-MM-DD'), matching the official Weekly Metric Report methodology:
+
+        Working_dept = HC_dept * daily * working_days - Leave_dept   (capacity)
+        OT_dept      = Σ approved OT-request hours       (by actual OT date)
+        Leave_dept   = Σ leave-request days * daily       (by start date),
+                       excluding the configured present-not-absent leave types
+        OT%_dept     = OT / (OT + Working)                (department-relative)
+        Absent%_dept = Leave / Σ_all-depts Working        (organisation-relative)
+
+    Headcount and emp->dept come from the MASTER cost-centre (column G) via the
+    cost-centre map. OT and leave are taken from the OT/leave-request reports
+    (att_requests) — NOT the timesheet scan totals — so the figures tie out to
+    the Weekly Metric Report. If no OT/leave-request data covers the window
+    (e.g. a seeded historical week with no uploads), the week is left untouched.
+    Returns the number of departments written."""
     s = get_settings()
     daily = float(s["daily_hours"])
-    excl = set(x.strip() for x in s["exclude_leave"].split(","))
+    wdays = float(s["working_days"])
+    excl = _excluded_leave_types()
     cc_map = get_cc_map()
 
-    emp_dept = {}
+    # emp -> reporting dept, and headcount per dept, from the active MASTER.
+    emp_dept, hc_by = {}, {}
     for r in edb.list_records("active"):
         cc = str(r.get("cost_centre") or "").strip()
         code = cc[:3] if len(cc) >= 3 else cc
         d = cc_map.get(code)
         if d:
             emp_dept[str(r.get("emp_no"))] = d
+            hc_by[d] = hc_by.get(d, 0) + 1
 
-    work_by, ot_by, leave_by = {}, {}, {}
-    for row in att.timesheet_rows():
-        wd = row["work_date"]
-        if wd < date_from or wd > date_to:
+    # Leave hours: leave-request rows by start date, qty(days) * daily,
+    # excluding the configured present-not-absent leave types.
+    leave_by = {}
+    for row in att.request_rows("leave"):
+        ds = row["date_start"]
+        if not ds or ds < date_from or ds > date_to:
+            continue
+        d = emp_dept.get(row["emp_no"])
+        if not d or (row["req_type"] or "").strip() in excl:
+            continue
+        leave_by[d] = leave_by.get(d, 0.0) + (row["days"] or 0) * daily
+
+    # OT hours: APPROVED OT-request rows by actual OT date. The status must be
+    # matched EXACTLY — both "รออนุมัติ" (pending) and "ไม่อนุมัติ" (rejected)
+    # CONTAIN "อนุมัติ" as a substring, so a substring test would wrongly count
+    # pending and rejected OT.
+    ot_by = {}
+    for row in att.request_rows("ot"):
+        if (row["status"] or "").strip() != "อนุมัติ":
+            continue
+        ds = row["date_start"]
+        if not ds or ds < date_from or ds > date_to:
             continue
         d = emp_dept.get(row["emp_no"])
         if not d:
             continue
-        work_by[d] = work_by.get(d, 0.0) + (row["normal_hours"] or 0)
-        ot_by[d] = ot_by.get(d, 0.0) + sum(
-            row[k] or 0 for k in ("ot1", "ot15", "ot2", "ot3"))
-        lv = (row["sick"] or 0) + (row["personal"] or 0)
-        if "annual" not in excl:
-            lv += (row["annual"] or 0)
-        leave_by[d] = leave_by.get(d, 0.0) + lv * daily
+        ot_by[d] = ot_by.get(d, 0.0) + (row["hours"] or 0)
 
-    depts = set(work_by) | set(ot_by) | set(leave_by)
+    # Nothing to compute for this window — leave any seeded values intact.
+    if not ot_by and not leave_by:
+        return 0
+
+    # Working = capacity - leave; absenteeism is organisation-relative, so its
+    # denominator is the total working hours across all departments.
+    depts = set(hc_by) | set(ot_by) | set(leave_by)
+    work_by = {d: hc_by.get(d, 0) * daily * wdays - leave_by.get(d, 0.0)
+               for d in depts}
+    tot_work = sum(work_by.values())
+
     nlabel = _norm_week(week_label)
     conn = get_conn(); cur = conn.cursor()
     n = 0
@@ -539,21 +601,17 @@ def compute_week(week_label, date_from, date_to, source="computed"):
         w = work_by.get(dept, 0.0)
         o = ot_by.get(dept, 0.0)
         lv = leave_by.get(dept, 0.0)
-        cur.execute(f"SELECT id, ot_pct, absent_pct FROM wm_metrics "
+        op = (o / (o + w)) if (o + w) else None
+        ap = (lv / tot_work) if tot_work else None
+        cur.execute(f"SELECT id FROM wm_metrics "
                     f"WHERE week_label={PH} AND dept={PH}", (nlabel, ndept))
         ex = cur.fetchone()
         if ex:
-            op = ex[1] if (ex[1] is not None and ex[1] > 0) \
-                else ((o / (o + w)) if (o + w) else None)
-            ap = ex[2] if (ex[2] is not None and ex[2] > 0) \
-                else ((lv / (w + lv)) if (w + lv) else None)
             cur.execute(f"UPDATE wm_metrics SET working_hrs={PH}, ot_hrs={PH}, "
                         f"leave_hrs={PH}, ot_pct={PH}, absent_pct={PH}, "
                         f"source={PH} WHERE id={PH}",
                         (w, o, lv, op, ap, source, ex[0]))
         else:
-            op = (o / (o + w)) if (o + w) else None
-            ap = (lv / (w + lv)) if (w + lv) else None
             cur.execute(f"INSERT INTO wm_metrics (week_label,week_key,dept,"
                         f"working_hrs,ot_hrs,leave_hrs,ot_pct,absent_pct,source)"
                         f" VALUES ({','.join([PH] * 9)})",

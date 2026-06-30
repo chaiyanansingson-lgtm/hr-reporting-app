@@ -169,7 +169,7 @@ def import_timesheet(file_bytes, filename, actor):
 
 
 def _import_requests(kind, file_bytes, filename, actor, status_col,
-                     days_col, hours_col):
+                     days_col, hours_col, minutes_col=None):
     import xlrd
     wb = xlrd.open_workbook(file_contents=file_bytes)
     sh = wb.sheet_by_index(0)
@@ -178,12 +178,17 @@ def _import_requests(kind, file_bytes, filename, actor, status_col,
     dates = []
     for r in range(8, sh.nrows):
         c1 = str(sh.cell_value(r, 1)).strip()
+        # The "พนักงาน :" (employee) label sits in a column that SHIFTS between
+        # report layouts — col 6 in the OT report but col 5 in the leave report.
+        # Detect it in either position (the employee code stays in col 9). The
+        # dept header label stays in col 1.
+        c5 = str(sh.cell_value(r, 5)).strip()
         c6 = str(sh.cell_value(r, 6)).strip()
         if c1.startswith("แผนก"):
             dept_code = str(sh.cell_value(r, 5)).strip()
             dept_name = str(sh.cell_value(r, 10)).strip()
             continue
-        if c6.startswith("พนักงาน"):
+        if c5.startswith("พนักงาน") or c6.startswith("พนักงาน"):
             emp_no = str(sh.cell_value(r, 9)).strip().replace(".0", "")
             emp_name = str(sh.cell_value(r, 13)).strip()
             continue
@@ -197,11 +202,18 @@ def _import_requests(kind, file_bytes, filename, actor, status_col,
             ds, de = _th_date_iso(a), _th_date_iso(b)
         if ds:
             dates.append(ds)
+        # Hours = whole-hours column (+ optional minutes column / 60). The OT
+        # report carries hours and minutes in SEPARATE columns; reading only the
+        # hours column silently drops the minutes portion of every OT record.
+        hours = _f(sh.cell_value(r, hours_col)) if hours_col is not None else 0.0
+        if minutes_col is not None:
+            hours += _f(sh.cell_value(r, minutes_col)) / 60.0
         rows.append((kind, emp_no, emp_name, dept_code, dept_name, doc,
                      str(sh.cell_value(r, 14)).strip(), ds, de,
                      str(sh.cell_value(r, 23)).strip(),
-                     _f(sh.cell_value(r, days_col)) if days_col else 0.0,
-                     _f(sh.cell_value(r, hours_col)),
+                     _f(sh.cell_value(r, days_col))
+                     if days_col is not None else 0.0,
+                     hours,
                      str(sh.cell_value(r, status_col)).strip(),
                      str(sh.cell_value(r, status_col + 1)).strip()))
     uid = _new_upload(kind, filename, len(rows),
@@ -219,15 +231,16 @@ def _import_requests(kind, file_bytes, filename, actor, status_col,
 
 
 def import_leave(file_bytes, filename, actor):
-    # leave: days col 29, hours col 31, status col 35
+    # leave: quantity(days) col 27, unit col 29, status col 31
     return _import_requests("leave", file_bytes, filename, actor,
-                            status_col=35, days_col=29, hours_col=31)
+                            status_col=31, days_col=27, hours_col=None)
 
 
 def import_ot(file_bytes, filename, actor):
-    # OT (shifted): hours col 29, minutes col 31, status col 34
+    # OT: hours col 29 + minutes col 31, status col 34
     return _import_requests("ot", file_bytes, filename, actor,
-                            status_col=34, days_col=None, hours_col=29)
+                            status_col=34, days_col=None, hours_col=29,
+                            minutes_col=31)
 
 
 # ---------------------------------------------------------------- data access
