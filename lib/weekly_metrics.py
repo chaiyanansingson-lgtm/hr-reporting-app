@@ -26,10 +26,13 @@ DEPT_ORDER = ["Laser", "Folding", "CNC Machine shop", "Weld", "Paint",
 
 # Default cost-centre (MASTER column G, 3-digit code) -> reporting department.
 DEFAULT_CC_MAP = {
-    "220": "Laser", "221": "Folding", "210": "CNC Machine shop",
-    "213": "Weld", "222": "Weld", "214": "Weld", "231": "Paint",
+    "220": "Laser", "221": "Folding",
+    "210": "CNC Machine shop", "214": "CNC Machine shop",
+    "213": "Weld", "222": "Weld",
+    "231": "Paint", "232": "Paint",
     "240": "Assembly", "223": "Misumi", "300": "QC", "280": "QC",
     "263": "Packing", "270": "Warehouse",
+    "273": "Office Staff", "274": "Office Staff", "275": "Office Staff",
     "310": "Office Staff", "313": "Office Staff", "352": "Office Staff",
     "353": "Office Staff", "354": "Office Staff", "356": "Office Staff",
 }
@@ -532,26 +535,60 @@ def compute_week(week_label, date_from, date_to, source="computed"):
         OT%_dept     = OT / (OT + Working)                (department-relative)
         Absent%_dept = Leave / Σ_all-depts Working        (organisation-relative)
 
-    Headcount and emp->dept come from the MASTER cost-centre (column G) via the
-    cost-centre map. OT and leave are taken from the OT/leave-request reports
-    (att_requests) — NOT the timesheet scan totals — so the figures tie out to
-    the Weekly Metric Report. If no OT/leave-request data covers the window
-    (e.g. a seeded historical week with no uploads), the week is left untouched.
-    Returns the number of departments written."""
+    Everything is derived from the three uploaded reports — no employee-MASTER
+    dependency — so subcontract/daily workers who appear only in the attendance
+    reports are still counted:
+
+        emp -> dept   from the OT/leave report headers (att_requests.dept_code)
+        HC_dept       = distinct employees who clocked in during the window
+                        (att_timesheet), mapped to dept
+
+    If no OT/leave-request data covers the window (e.g. a seeded historical week
+    with no uploads), the week is left untouched. Returns depts written."""
     s = get_settings()
     daily = float(s["daily_hours"])
     wdays = float(s["working_days"])
     excl = _excluded_leave_types()
     cc_map = get_cc_map()
 
-    # emp -> reporting dept, and headcount per dept, from the active MASTER.
-    emp_dept, hc_by = {}, {}
-    for r in edb.list_records("active"):
-        cc = str(r.get("cost_centre") or "").strip()
-        code = cc[:3] if len(cc) >= 3 else cc
-        d = cc_map.get(code)
+    def _dept_of(cc):
+        # Report headers carry the cost-centre as e.g. "ASM220"; strip the
+        # prefix, take the leading digits, then map (with a 3-digit fallback so
+        # 4-digit sub-units roll up to their parent department).
+        z = str(cc or "").strip().upper()
+        if z.startswith("ASM"):
+            z = z[3:]
+        digits = ""
+        for ch in z:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        return cc_map.get(digits) or cc_map.get(digits[:3])
+
+    # emp -> dept from the report headers (leave first, then OT — first wins).
+    emp_dept = {}
+    for kind in ("leave", "ot"):
+        for row in att.request_rows(kind):
+            e = row["emp_no"]
+            if e in emp_dept:
+                continue
+            d = _dept_of(row["dept_code"])
+            if d:
+                emp_dept[e] = d
+
+    # Headcount = distinct employees who clocked in during the window.
+    hc_by, seen = {}, set()
+    for row in att.timesheet_rows():
+        wd = row["work_date"]
+        if not wd or wd < date_from or wd > date_to:
+            continue
+        e = row["emp_no"]
+        if e in seen:
+            continue
+        seen.add(e)
+        d = emp_dept.get(e)
         if d:
-            emp_dept[str(r.get("emp_no"))] = d
             hc_by[d] = hc_by.get(d, 0) + 1
 
     # Leave hours: leave-request rows by start date, qty(days) * daily,
