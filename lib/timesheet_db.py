@@ -7,6 +7,20 @@
 import datetime as dt
 import re
 from lib.db import get_conn, IS_POSTGRES, PH
+
+
+def _bulk_insert(cur, sql_prefix, rows, page_size=1000):
+    """Fast multi-row INSERT. `sql_prefix` must end with '... VALUES '.
+    Postgres: one execute_values call; SQLite: executemany. Each item in
+    `rows` is a full value tuple including the leading upload_id."""
+    if not rows:
+        return
+    if IS_POSTGRES:
+        from psycopg2.extras import execute_values
+        execute_values(cur, sql_prefix + "%s", rows, page_size=page_size)
+    else:
+        ph = "(" + ",".join(["?"] * len(rows[0])) + ")"
+        cur.executemany(sql_prefix + ph, rows)
 from lib import employee_db as edb
 
 SERIAL = "SERIAL PRIMARY KEY" if IS_POSTGRES else \
@@ -113,10 +127,9 @@ def apply_upload(rows, label, actor, meta):
         cur.execute("SELECT MAX(id) FROM ts_uploads"); uid = cur.fetchone()[0]
     else:
         uid = cur.lastrowid
-    cur.executemany(
-        f"""INSERT INTO ts_days (upload_id, emp_no, work_date, working_hrs,
-            ot1, ot15, ot2, ot3, absent, sick, personal, annual)
-            VALUES ({','.join([PH]*12)})""",
+    _bulk_insert(cur,
+        """INSERT INTO ts_days (upload_id, emp_no, work_date, working_hrs,
+            ot1, ot15, ot2, ot3, absent, sick, personal, annual) VALUES """,
         [(uid,) + tuple(d) for d in rows])
     conn.commit()
     try:

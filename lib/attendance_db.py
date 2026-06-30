@@ -23,6 +23,21 @@
 import datetime as dt
 
 from lib.db import get_conn, IS_POSTGRES, PH
+
+
+def _bulk_insert(cur, sql_prefix, rows, page_size=1000):
+    """Fast multi-row INSERT. `sql_prefix` must end with '... VALUES '.
+    Postgres: one execute_values call (a few round-trips for thousands of
+    rows). SQLite: plain executemany. Each item in `rows` is a full value
+    tuple including the leading upload_id."""
+    if not rows:
+        return
+    if IS_POSTGRES:
+        from psycopg2.extras import execute_values
+        execute_values(cur, sql_prefix + "%s", rows, page_size=page_size)
+    else:
+        ph = "(" + ",".join(["?"] * len(rows[0])) + ")"
+        cur.executemany(sql_prefix + ph, rows)
 from lib import employee_db as edb
 
 SERIAL = "SERIAL PRIMARY KEY" if IS_POSTGRES else \
@@ -158,12 +173,11 @@ def import_timesheet(file_bytes, filename, actor):
                       min(dates) if dates else None,
                       max(dates) if dates else None, actor)
     conn = get_conn(); cur = conn.cursor()
-    cur.executemany(
-        f"""INSERT INTO att_timesheet (upload_id, emp_no, emp_name,
+    _bulk_insert(cur,
+        """INSERT INTO att_timesheet (upload_id, emp_no, emp_name,
             work_date, shift_code, scans, normal_hours, late_min, early_min,
-            ot1, ot15, ot2, ot3, absent, sick, personal, annual)
-            VALUES ({uid},{PH},{PH},{PH},{PH},{PH},{PH},{PH},{PH},{PH},{PH},
-            {PH},{PH},{PH},{PH},{PH},{PH})""", rows)
+            ot1, ot15, ot2, ot3, absent, sick, personal, annual) VALUES """,
+        [(uid,) + tuple(r) for r in rows])
     conn.commit()
     return uid, len(rows)
 
@@ -220,12 +234,11 @@ def _import_requests(kind, file_bytes, filename, actor, status_col,
                       min(dates) if dates else None,
                       max(dates) if dates else None, actor)
     conn = get_conn(); cur = conn.cursor()
-    cur.executemany(
-        f"""INSERT INTO att_requests (upload_id, kind, emp_no, emp_name,
+    _bulk_insert(cur,
+        """INSERT INTO att_requests (upload_id, kind, emp_no, emp_name,
             dept_code, dept_name, doc_no, req_type, date_start, date_end,
-            time_range, days, hours, status, remark)
-            VALUES ({uid},{PH},{PH},{PH},{PH},{PH},{PH},{PH},{PH},{PH},{PH},
-            {PH},{PH},{PH},{PH})""", rows)
+            time_range, days, hours, status, remark) VALUES """,
+        [(uid,) + tuple(r) for r in rows])
     conn.commit()
     return uid, len(rows)
 
